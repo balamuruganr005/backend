@@ -1,7 +1,10 @@
+
 from flask import Flask, request, jsonify
+from flask_cors import CORS  # Import CORS
 import time
 
-app = Flask(__name__)  # Make sure 'app' is used here
+app = Flask(__name__)
+CORS(app)  # Allow requests from any website
 
 request_logs = []
 
@@ -13,4 +16,4 @@ def home():
     return jsonify({"message": "Request received", "ip": ip})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)  # Use any port (Render will assign automatically)
+    app.run(host="0.0.0.0", port=5000, debug=True)
