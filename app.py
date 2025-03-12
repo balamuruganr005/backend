@@ -10,21 +10,20 @@ app = Flask(__name__)
 CORS(app)
 
 # Initialize SQLite Database
-conn = sqlite3.connect("traffic_data.db", check_same_thread=False)
-c = conn.cursor()
+def init_db():
+    with sqlite3.connect("traffic_data.db") as conn:
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS traffic_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ip TEXT,
+                timestamp REAL,
+                request_size INTEGER
+            )
+        """)
+        conn.commit()
 
-# Create table if not exists
-c.execute("""
-    CREATE TABLE IF NOT EXISTS traffic_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ip TEXT,
-        timestamp REAL,
-        request_size INTEGER
-    )
-""")
-conn.commit()
-
-request_logs = []  # Stores traffic data in memory
+init_db()  # Ensure table exists before starting the app
 
 @app.route("/", methods=["GET", "POST"])
 def home():
@@ -32,35 +31,33 @@ def home():
     timestamp = time.time()
     ip = request.remote_addr
     request_size = len(str(request.data))  # Approximate request size in bytes
-    request_logs.append({"time": timestamp, "ip": ip})
 
-    # Insert into SQLite database
-    c.execute("INSERT INTO traffic_logs (ip, timestamp, request_size) VALUES (?, ?, ?)", 
-              (ip, timestamp, request_size))
-    conn.commit()
+    with sqlite3.connect("traffic_data.db") as conn:
+        c = conn.cursor()
+        c.execute("INSERT INTO traffic_logs (ip, timestamp, request_size) VALUES (?, ?, ?)", 
+                  (ip, timestamp, request_size))
+        conn.commit()
 
     return jsonify({"message": "Request received", "ip": ip, "size": request_size})
-
-@app.route("/traffic", methods=["GET"])
-def get_traffic():
-    """Returns logged traffic data (in-memory logs)"""
-    return jsonify(request_logs)
 
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
     """Retrieve all logged traffic data from SQLite"""
-    c.execute("SELECT * FROM traffic_logs")
-    data = c.fetchall()
+    with sqlite3.connect("traffic_data.db") as conn:
+        c = conn.cursor()
+        c.execute("SELECT * FROM traffic_logs")
+        data = c.fetchall()
+    
     return jsonify({"traffic_logs": data})
 
 @app.route("/traffic-graph", methods=["GET"])
 def traffic_graph():
     """Generates and returns a graph of traffic over time from SQLite"""
-    
-    # Fetch timestamps from SQLite
-    c.execute("SELECT timestamp FROM traffic_logs")
-    data = c.fetchall()
-    
+    with sqlite3.connect("traffic_data.db") as conn:
+        c = conn.cursor()
+        c.execute("SELECT timestamp FROM traffic_logs")
+        data = c.fetchall()
+
     if not data:
         return jsonify({"error": "No data available"})
 
