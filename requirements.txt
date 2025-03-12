@@ -2,3 +2,4 @@ flask
 gunicorn
 flask-cors
 matplotlib
+sqllite3
