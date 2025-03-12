@@ -1,9 +1,8 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import time
 import matplotlib.pyplot as plt
 import io
-import base64
 import sqlite3
 
 app = Flask(__name__)
@@ -23,7 +22,7 @@ def init_db():
         """)
         conn.commit()
 
-init_db()  # Ensure table exists before starting the app
+init_db()
 
 @app.route("/", methods=["GET", "POST"])
 def home():
@@ -40,9 +39,9 @@ def home():
 
     return jsonify({"message": "Request received", "ip": ip, "size": request_size})
 
-@app.route("/traffic-data", methods=["GET"])
-def get_traffic_data():
-    """Retrieve all logged traffic data from SQLite"""
+@app.route("/traffic", methods=["GET"])
+def get_traffic():
+    """Retrieve logged traffic data from SQLite"""
     with sqlite3.connect("traffic_data.db") as conn:
         c = conn.cursor()
         c.execute("SELECT * FROM traffic_logs")
@@ -71,13 +70,12 @@ def traffic_graph():
     plt.title("Traffic Flow Over Time")
     plt.xticks(rotation=45)
 
-    # Convert plot to image
+    # Save plot to a BytesIO object
     img = io.BytesIO()
     plt.savefig(img, format="png")
     img.seek(0)
-    img_base64 = base64.b64encode(img.getvalue()).decode()
 
-    return jsonify({"image": f"data:image/png;base64,{img_base64}"})
+    return send_file(img, mimetype="image/png")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
