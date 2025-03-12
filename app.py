@@ -87,19 +87,35 @@ def traffic_graph():
 def detect_anomaly():
     """Detects unusual spikes in request rate"""
 
+    # Fetch timestamps from traffic_logs table
     c.execute("SELECT timestamp FROM traffic_logs")
     data = [row[0] for row in c.fetchall()]
 
     if len(data) < 5:  # Not enough data for anomaly detection
         return jsonify({"message": "Not enough data for anomaly detection"})
 
-    intervals = np.diff(data)  # Time intervals between requests
+    # Convert timestamps to numpy array
+    data = np.array(sorted(data))  # Ensure timestamps are sorted
+    intervals = np.diff(data)  # Time gaps between requests
+
     mean_interval = np.mean(intervals)
     std_interval = np.std(intervals)
 
-    anomalies = [data[i] for i in range(1, len(data)) if abs(intervals[i-1] - mean_interval) > 2 * std_interval]
+    # Adjusted threshold for anomaly detection
+    threshold = 1.5 * std_interval  # Reduced from 2 * std_interval for more sensitivity
+
+    # Detect anomalies
+    anomalies = [data[i] for i in range(1, len(data)) if abs(intervals[i - 1] - mean_interval) > threshold]
+
+    # Log details for debugging
+    print(f"Total Requests: {len(data)}")
+    print(f"Intervals: {intervals}")
+    print(f"Mean Interval: {mean_interval}")
+    print(f"Std Interval: {std_interval}")
+    print(f"Detected Anomalies: {anomalies}")
 
     return jsonify({"anomalies": anomalies, "total_anomalies": len(anomalies)})
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
