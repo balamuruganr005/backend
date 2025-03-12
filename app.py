@@ -85,36 +85,45 @@ def traffic_graph():
 
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
-    """Detects unusual spikes in request rate"""
+    """Detects unusual spikes in request rate and groups anomalies by IP"""
 
-    # Fetch timestamps from traffic_logs table
-    c.execute("SELECT timestamp FROM traffic_logs")
-    data = [row[0] for row in c.fetchall()]
+    # Fetch timestamps and IPs from the traffic_logs table
+    c.execute("SELECT ip, timestamp FROM traffic_logs")
+    records = c.fetchall()
 
-    if len(data) < 5:  # Not enough data for anomaly detection
+    if len(records) < 5:  # Not enough data for anomaly detection
         return jsonify({"message": "Not enough data for anomaly detection"})
 
-    # Convert timestamps to numpy array
-    data = np.array(sorted(data))  # Ensure timestamps are sorted
-    intervals = np.diff(data)  # Time gaps between requests
+    # Organizing data by IP
+    ip_data = {}
+    for ip, timestamp in records:
+        if ip not in ip_data:
+            ip_data[ip] = []
+        ip_data[ip].append(timestamp)
 
-    mean_interval = np.mean(intervals)
-    std_interval = np.std(intervals)
+    anomalies_by_ip = {}
 
-    # Adjusted threshold for anomaly detection
-    threshold = 1.5 * std_interval  # Reduced from 2 * std_interval for more sensitivity
+    for ip, timestamps in ip_data.items():
+        timestamps = sorted(timestamps)  # Ensure timestamps are in order
+        intervals = np.diff(timestamps)  # Time gaps between requests
 
-    # Detect anomalies
-    anomalies = [data[i] for i in range(1, len(data)) if abs(intervals[i - 1] - mean_interval) > threshold]
+        if len(intervals) < 1:
+            continue  # Skip if there's only one request
 
-    # Log details for debugging
-    print(f"Total Requests: {len(data)}")
-    print(f"Intervals: {intervals}")
-    print(f"Mean Interval: {mean_interval}")
-    print(f"Std Interval: {std_interval}")
-    print(f"Detected Anomalies: {anomalies}")
+        mean_interval = np.mean(intervals)
+        std_interval = np.std(intervals)
 
-    return jsonify({"anomalies": anomalies, "total_anomalies": len(anomalies)})
+        threshold = 1.5 * std_interval  # Adjusted sensitivity
+        anomalies = [timestamps[i] for i in range(1, len(timestamps)) if abs(intervals[i - 1] - mean_interval) > threshold]
+
+        if anomalies:
+            anomalies_by_ip[ip] = anomalies
+
+    return jsonify({
+        "anomalies_by_ip": anomalies_by_ip,
+        "total_ips_with_anomalies": len(anomalies_by_ip)
+    })
+
 
 
 if __name__ == "__main__":
