@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import io
 import sqlite3
 import numpy as np
+import requests  # For proxy detection
 
 app = Flask(__name__)
 CORS(app)
@@ -30,30 +31,34 @@ c.execute("""
 """)
 conn.commit()
 
-# Define Malicious & Blocked IPs
-MALICIOUS_IPS = {"45.140.143.77", "185.220.100.255"}
-BLOCKED_IPS = {"81.23.152.244", "222.252.194.204"}
+# Define thresholds and tracking
+MALICIOUS_IPS = set()
+BLOCKED_IPS = set()
 IP_ANOMALY_COUNT = {}  # Track anomaly counts per IP
-
-# Threshold to block an IP automatically
-ANOMALY_THRESHOLD = 3  
+REPEATING_IP_THRESHOLD = 10  # More than 10 requests = suspicious
+ANOMALY_THRESHOLD = 3  # Anomalies before blocking IP
 
 def get_client_ips():
-    """
-    Extracts all IPs from X-Forwarded-For header.
-    If no header, fallback to remote_addr.
-    """
+    """Extracts all IPs from X-Forwarded-For header."""
     forwarded = request.headers.get("X-Forwarded-For", None)
     if forwarded:
         return [ip.strip() for ip in forwarded.split(",")]
     return [request.remote_addr]
+
+def is_proxy_ip(ip):
+    """Check if an IP is a proxy using an external API."""
+    try:
+        response = requests.get(f"http://ip-api.com/json/{ip}?fields=proxy").json()
+        return response.get("proxy", False)  # Returns True if proxy
+    except:
+        return False  # Fail-safe
 
 @app.route("/", methods=["GET", "POST"])
 def home():
     """Logs each request and updates the IP status in SQLite."""
     timestamp = time.time()
     ips = get_client_ips()
-    request_size = len(str(request.data))  
+    request_size = len(str(request.data))
 
     for ip in ips:
         status = "normal"
@@ -62,7 +67,7 @@ def home():
         elif ip in MALICIOUS_IPS:
             status = "malicious"
 
-        c.execute("INSERT INTO traffic_logs (ip, timestamp, request_size, status) VALUES (?, ?, ?, ?)", 
+        c.execute("INSERT INTO traffic_logs (ip, timestamp, request_size, status) VALUES (?, ?, ?, ?)",
                   (ip, timestamp, request_size, status))
         conn.commit()
 
@@ -102,7 +107,7 @@ def traffic_graph():
 
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
-    """Detects unusual spikes in request rate and updates status accordingly."""
+    """Detects unusual spikes, repeated IPs, and proxy IPs."""
     c.execute("SELECT ip, timestamp FROM traffic_logs")
     records = c.fetchall()
 
@@ -116,6 +121,8 @@ def detect_anomaly():
         ip_data[ip].append(timestamp)
 
     anomalies_by_ip = {}
+    repeating_ips = set()
+    proxy_ips = set()
 
     for ip, timestamps in ip_data.items():
         timestamps.sort()
@@ -133,25 +140,33 @@ def detect_anomaly():
         threshold = mean_interval - (1.5 * std_interval)
         anomalies = [timestamps[i] for i in range(1, len(timestamps)) if intervals[i - 1] < threshold]
 
+        # 🚨 Detect repeating IPs
+        if len(timestamps) > REPEATING_IP_THRESHOLD:
+            repeating_ips.add(ip)
+
+        # 🚨 Detect proxy IPs
+        if is_proxy_ip(ip):
+            proxy_ips.add(ip)
+
         if anomalies:
             anomalies_by_ip[ip] = anomalies
-
-            # Mark IP as Malicious
             c.execute("UPDATE traffic_logs SET status = 'malicious' WHERE ip = ?", (ip,))
             conn.commit()
-
-            # Track anomaly counts per IP
             IP_ANOMALY_COUNT[ip] = IP_ANOMALY_COUNT.get(ip, 0) + 1
 
-            # Block IP if anomaly count exceeds threshold
+            # 🚨 Block IP if anomaly count exceeds threshold
             if IP_ANOMALY_COUNT[ip] >= ANOMALY_THRESHOLD:
                 c.execute("UPDATE traffic_logs SET status = 'blocked' WHERE ip = ?", (ip,))
-                BLOCKED_IPS.add(ip)  # Add IP to blocked list
+                BLOCKED_IPS.add(ip)
                 conn.commit()
 
     return jsonify({
         "anomalies_by_ip": anomalies_by_ip,
-        "total_ips_with_anomalies": len(anomalies_by_ip)
+        "repeating_ips": list(repeating_ips),
+        "proxy_ips": list(proxy_ips),
+        "total_ips_with_anomalies": len(anomalies_by_ip),
+        "total_repeating_ips": len(repeating_ips),
+        "total_proxy_ips": len(proxy_ips)
     })
 
 @app.route("/unblock-ip", methods=["POST"])
@@ -164,7 +179,7 @@ def unblock_ip():
         return jsonify({"error": "IP address is required"}), 400
 
     if ip in BLOCKED_IPS:
-        BLOCKED_IPS.remove(ip)  # Remove from blocked list
+        BLOCKED_IPS.remove(ip)
         c.execute("UPDATE traffic_logs SET status = 'normal' WHERE ip = ?", (ip,))
         conn.commit()
         return jsonify({"message": f"IP {ip} has been unblocked"})
