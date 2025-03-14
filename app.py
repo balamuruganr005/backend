@@ -89,7 +89,7 @@ def traffic_graph():
 
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
-    """Detects unusual spikes in request rate and groups anomalies by IP."""
+    """Detects unusual spikes in request rate and groups anomalies by IP"""
 
     # Fetch timestamps and IPs from the traffic_logs table
     c.execute("SELECT ip, timestamp FROM traffic_logs")
@@ -98,12 +98,14 @@ def detect_anomaly():
     if len(records) < 5:  # Not enough data for anomaly detection
         return jsonify({"message": "Not enough data for anomaly detection"})
 
-    # Organizing data by IP
+    # Organizing data by IP (handling multiple IPs per record)
     ip_data = {}
-    for ip, timestamp in records:
-        if ip not in ip_data:
-            ip_data[ip] = []
-        ip_data[ip].append(timestamp)
+    for ip_entry, timestamp in records:
+        ip_list = ip_entry.split(", ")  # Split multiple IPs
+        for ip in ip_list:
+            if ip not in ip_data:
+                ip_data[ip] = []
+            ip_data[ip].append(timestamp)
 
     anomalies_by_ip = {}
 
@@ -116,6 +118,9 @@ def detect_anomaly():
 
         mean_interval = np.mean(intervals)
         std_interval = np.std(intervals)
+
+        if std_interval == 0:  # Avoid division by zero
+            continue  
 
         threshold = mean_interval - (1.5 * std_interval)  # Adjusted sensitivity
         anomalies = [timestamps[i] for i in range(1, len(timestamps)) if intervals[i - 1] < threshold]
