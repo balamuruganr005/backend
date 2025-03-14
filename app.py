@@ -61,6 +61,20 @@ def log_traffic():
 
     insert_traffic_log(ip, request_size, status)
     return jsonify({"message": "Log inserted successfully!"})
+def get_client_ips():
+    """Extracts all IPs from X-Forwarded-For header."""
+    forwarded = request.headers.get("X-Forwarded-For", None)
+    if forwarded:
+        return [ip.strip() for ip in forwarded.split(",")]
+    return [request.remote_addr]
+
+def is_proxy_ip(ip):
+    """Check if an IP is a proxy using an external API."""
+    try:
+        response = requests.get(f"http://ip-api.com/json/{ip}?fields=proxy").json()
+        return response.get("proxy", False)  # Returns True if proxy
+    except:
+        return False 
 
 @app.route("/", methods=["GET", "POST"])
 def home():
