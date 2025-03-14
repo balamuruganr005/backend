@@ -34,11 +34,15 @@ c.execute("""
 """)
 conn.commit()
 
+def get_client_ip():
+    """Extract real client IP address from request headers."""
+    return request.headers.get("X-Forwarded-For", request.remote_addr)
+
 @app.route("/", methods=["GET", "POST"])
 def home():
-    """Logs each request, stores it in SQLite, and returns a success response"""
+    """Logs each request, stores it in SQLite, and returns a success response."""
     timestamp = time.time()
-    ip = request.remote_addr
+    ip = get_client_ip()
     request_size = len(str(request.data))  # Approximate request size in bytes
 
     # Insert into SQLite database
@@ -50,14 +54,14 @@ def home():
 
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
-    """Retrieve all logged traffic data from SQLite"""
+    """Retrieve all logged traffic data from SQLite."""
     c.execute("SELECT id, ip, timestamp, request_size FROM traffic_logs")
     data = [{"id": row[0], "ip": row[1], "time": row[2], "size": row[3]} for row in c.fetchall()]
     return jsonify({"traffic_logs": data})
 
 @app.route("/traffic-graph", methods=["GET"])
 def traffic_graph():
-    """Generates and returns a graph of traffic over time from SQLite"""
+    """Generates and returns a graph of traffic over time from SQLite."""
 
     # Fetch timestamps from SQLite
     c.execute("SELECT timestamp FROM traffic_logs")
@@ -70,7 +74,7 @@ def traffic_graph():
     timestamps = [time.strftime("%H:%M:%S", time.localtime(t)) for t in times]
 
     plt.figure(figsize=(10, 5))
-    plt.plot(timestamps, range(len(timestamps)), marker="o", linestyle="-", color="b")
+    plt.step(timestamps, range(len(timestamps)), marker="o", linestyle="-", color="b")
     plt.xlabel("Time")
     plt.ylabel("Requests")
     plt.title("Traffic Flow Over Time")
@@ -85,7 +89,7 @@ def traffic_graph():
 
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
-    """Detects unusual spikes in request rate and groups anomalies by IP"""
+    """Detects unusual spikes in request rate and groups anomalies by IP."""
 
     # Fetch timestamps and IPs from the traffic_logs table
     c.execute("SELECT ip, timestamp FROM traffic_logs")
@@ -113,8 +117,8 @@ def detect_anomaly():
         mean_interval = np.mean(intervals)
         std_interval = np.std(intervals)
 
-        threshold = 1.5 * std_interval  # Adjusted sensitivity
-        anomalies = [timestamps[i] for i in range(1, len(timestamps)) if abs(intervals[i - 1] - mean_interval) > threshold]
+        threshold = mean_interval - (1.5 * std_interval)  # Adjusted sensitivity
+        anomalies = [timestamps[i] for i in range(1, len(timestamps)) if intervals[i - 1] < threshold]
 
         if anomalies:
             anomalies_by_ip[ip] = anomalies
@@ -123,8 +127,6 @@ def detect_anomaly():
         "anomalies_by_ip": anomalies_by_ip,
         "total_ips_with_anomalies": len(anomalies_by_ip)
     })
-
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
