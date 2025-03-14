@@ -35,8 +35,32 @@ conn.commit()
 MALICIOUS_IPS = set()
 BLOCKED_IPS = set()
 IP_ANOMALY_COUNT = {}  # Track anomaly counts per IP
-REPEATING_IP_THRESHOLD = 10  # More than 10 requests = suspicious
+REPEATING_IP_THRESHOLD = 5  # More than 10 requests = suspicious
 ANOMALY_THRESHOLD = 3  # Anomalies before blocking IP
+
+app = Flask(__name__)
+
+# Function to insert traffic logs
+def insert_traffic_log(ip, request_size, status):
+    conn = sqlite3.connect("traffic_data.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO traffic_logs (ip, timestamp, request_size, status) VALUES (?, datetime('now'), ?, ?)",
+        (ip, request_size, status),
+    )
+    conn.commit()
+    conn.close()
+
+# Endpoint to receive traffic logs
+@app.route("/log_traffic", methods=["POST"])
+def log_traffic():
+    data = request.json
+    ip = data.get("ip")
+    request_size = data.get("request_size", 0)
+    status = data.get("status", "unknown")
+
+    insert_traffic_log(ip, request_size, status)
+    return jsonify({"message": "Log inserted successfully!"})
 
 def get_client_ips():
     """Extracts all IPs from X-Forwarded-For header."""
