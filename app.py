@@ -69,6 +69,8 @@ def home():
     ip = request.remote_addr
     request_size = len(str(request.data))
 
+    print(f"✅ Logging Request: IP={ip}, Size={request_size}")  # Debugging
+
     conn, c = get_db_connection()
     c.execute("INSERT INTO traffic_logs (ip, timestamp, request_size, status) VALUES (?, ?, ?, ?)",
               (ip, timestamp, request_size, "normal"))
