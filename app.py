@@ -15,11 +15,13 @@ CORS(app)
 # Initialize rate limiter (prevents DDoS)
 limiter = Limiter(get_remote_address, app=app, default_limits=["500 per minute"])
 
-# Initialize SQLite Database
-conn = sqlite3.connect("traffic_data.db", check_same_thread=False)
-c = conn.cursor()
+# Function to get SQLite connection
+def get_db_connection():
+    conn = sqlite3.connect("traffic_data.db", check_same_thread=False)
+    return conn, conn.cursor()
 
-# Create table with status column
+# Create table if not exists
+conn, c = get_db_connection()
 c.execute("""
     CREATE TABLE IF NOT EXISTS traffic_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,23 +32,21 @@ c.execute("""
     )
 """)
 conn.commit()
+conn.close()
 
 # Define thresholds and tracking
 MALICIOUS_IPS = set()
 BLOCKED_IPS = set()
-IP_ANOMALY_COUNT = {}  # Track anomaly counts per IP
-REPEATING_IP_THRESHOLD = 5  # More than 10 requests = suspicious
-ANOMALY_THRESHOLD = 3  # Anomalies before blocking IP
-
-app = Flask(__name__)
+IP_ANOMALY_COUNT = {}  
+REPEATING_IP_THRESHOLD = 5  
+ANOMALY_THRESHOLD = 3  
 
 # Function to insert traffic logs
 def insert_traffic_log(ip, request_size, status):
-    conn = sqlite3.connect("traffic_data.db")
-    cursor = conn.cursor()
+    conn, cursor = get_db_connection()
     cursor.execute(
-        "INSERT INTO traffic_logs (ip, timestamp, request_size, status) VALUES (?, datetime('now'), ?, ?)",
-        (ip, request_size, status),
+        "INSERT INTO traffic_logs (ip, timestamp, request_size, status) VALUES (?, ?, ?, ?)",
+        (ip, time.time(), request_size, status),
     )
     conn.commit()
     conn.close()
@@ -62,53 +62,37 @@ def log_traffic():
     insert_traffic_log(ip, request_size, status)
     return jsonify({"message": "Log inserted successfully!"})
 
-def get_client_ips():
-    """Extracts all IPs from X-Forwarded-For header."""
-    forwarded = request.headers.get("X-Forwarded-For", None)
-    if forwarded:
-        return [ip.strip() for ip in forwarded.split(",")]
-    return [request.remote_addr]
-
-def is_proxy_ip(ip):
-    """Check if an IP is a proxy using an external API."""
-    try:
-        response = requests.get(f"http://ip-api.com/json/{ip}?fields=proxy").json()
-        return response.get("proxy", False)  # Returns True if proxy
-    except:
-        return False  # Fail-safe
-
 @app.route("/", methods=["GET", "POST"])
 def home():
     """Logs each request and updates the IP status in SQLite."""
     timestamp = time.time()
-    ips = get_client_ips()
+    ip = request.remote_addr
     request_size = len(str(request.data))
 
-    for ip in ips:
-        status = "normal"
-        if ip in BLOCKED_IPS:
-            status = "blocked"
-        elif ip in MALICIOUS_IPS:
-            status = "malicious"
+    conn, c = get_db_connection()
+    c.execute("INSERT INTO traffic_logs (ip, timestamp, request_size, status) VALUES (?, ?, ?, ?)",
+              (ip, timestamp, request_size, "normal"))
+    conn.commit()
+    conn.close()
 
-        c.execute("INSERT INTO traffic_logs (ip, timestamp, request_size, status) VALUES (?, ?, ?, ?)",
-                  (ip, timestamp, request_size, status))
-        conn.commit()
-
-    return jsonify({"message": "Request logged", "ips": ips, "size": request_size})
+    return jsonify({"message": "Request logged", "ip": ip, "size": request_size})
 
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
     """Retrieve all logged traffic data from SQLite."""
+    conn, c = get_db_connection()
     c.execute("SELECT id, ip, timestamp, request_size, status FROM traffic_logs")
     data = [{"id": row[0], "ip": row[1], "time": row[2], "size": row[3], "status": row[4]} for row in c.fetchall()]
+    conn.close()
     return jsonify({"traffic_logs": data})
 
 @app.route("/traffic-graph", methods=["GET"])
 def traffic_graph():
     """Generates and returns a graph of traffic over time from SQLite."""
+    conn, c = get_db_connection()
     c.execute("SELECT timestamp FROM traffic_logs")
     data = c.fetchall()
+    conn.close()
 
     if not data:
         return jsonify({"error": "No data available"})
@@ -132,8 +116,10 @@ def traffic_graph():
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
     """Detects unusual spikes, repeated IPs, and proxy IPs."""
+    conn, c = get_db_connection()
     c.execute("SELECT ip, timestamp FROM traffic_logs")
     records = c.fetchall()
+    conn.close()
 
     if len(records) < 5:
         return jsonify({"message": "Not enough data for anomaly detection"})
@@ -174,15 +160,19 @@ def detect_anomaly():
 
         if anomalies:
             anomalies_by_ip[ip] = anomalies
+            conn, c = get_db_connection()
             c.execute("UPDATE traffic_logs SET status = 'malicious' WHERE ip = ?", (ip,))
             conn.commit()
+            conn.close()
             IP_ANOMALY_COUNT[ip] = IP_ANOMALY_COUNT.get(ip, 0) + 1
 
             # 🚨 Block IP if anomaly count exceeds threshold
             if IP_ANOMALY_COUNT[ip] >= ANOMALY_THRESHOLD:
+                conn, c = get_db_connection()
                 c.execute("UPDATE traffic_logs SET status = 'blocked' WHERE ip = ?", (ip,))
-                BLOCKED_IPS.add(ip)
                 conn.commit()
+                conn.close()
+                BLOCKED_IPS.add(ip)
 
     return jsonify({
         "anomalies_by_ip": anomalies_by_ip,
@@ -204,8 +194,10 @@ def unblock_ip():
 
     if ip in BLOCKED_IPS:
         BLOCKED_IPS.remove(ip)
+        conn, c = get_db_connection()
         c.execute("UPDATE traffic_logs SET status = 'normal' WHERE ip = ?", (ip,))
         conn.commit()
+        conn.close()
         return jsonify({"message": f"IP {ip} has been unblocked"})
     
     return jsonify({"message": "IP is not blocked"}), 400
