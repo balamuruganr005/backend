@@ -54,13 +54,32 @@ def insert_traffic_log(ip, request_size, status):
 # Endpoint to receive traffic logs
 @app.route("/log_traffic", methods=["POST"])
 def log_traffic():
-    data = request.json
-    ip = data.get("ip")
-    request_size = data.get("request_size", 0)
-    status = data.get("status", "unknown")
+    data = request.get_json()
 
-    insert_traffic_log(ip, request_size, status)
-    return jsonify({"message": "Log inserted successfully!"})
+    # DEBUG: Print received data
+    print("Received Data:", data)  
+
+    if not data:
+        return jsonify({"error": "No data received"}), 400
+
+    try:
+        conn = sqlite3.connect("traffic_data.db")
+        cursor = conn.cursor()
+
+        query = """INSERT INTO traffic_logs (ip, timestamp, request_size, status)
+                   VALUES (?, ?, ?, ?)"""
+        values = (data["ip"], data["timestamp"], data["request_size"], data["status"])
+        
+        cursor.execute(query, values)
+        conn.commit()
+        conn.close()
+
+        return jsonify({"status": "success"}), 200
+
+    except Exception as e:
+        print("Database Error:", e)
+        return jsonify({"error": str(e)}), 500
+
 def get_client_ips():
     """Extracts all IPs from X-Forwarded-For header."""
     forwarded = request.headers.get("X-Forwarded-For", None)
