@@ -5,7 +5,6 @@ from flask_limiter.util import get_remote_address
 import time
 import matplotlib.pyplot as plt
 import io
-import base64
 import sqlite3
 import numpy as np
 
@@ -29,43 +28,57 @@ c.execute("""
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ip TEXT,
         timestamp REAL,
-        request_size INTEGER
+        request_size INTEGER,
+        status TEXT
     )
 """)
 conn.commit()
 
-def get_client_ip():
+# Define Malicious & Blocked IPs
+MALICIOUS_IPS = {"45.140.143.77", "185.220.100.255"}
+BLOCKED_IPS = {"81.23.152.244", "222.252.194.204"}
+
+def get_client_ips():
+    """
+    Extracts all IPs from X-Forwarded-For header.
+    If no header, fallback to remote_addr.
+    """
     forwarded = request.headers.get("X-Forwarded-For", None)
     if forwarded:
-        return forwarded.split(",")[0]  # Only store the first (real client) IP
-    return request.remote_addr
+        return [ip.strip() for ip in forwarded.split(",")]  # Return list of IPs
+    return [request.remote_addr]  # Single IP in list format
 
 @app.route("/", methods=["GET", "POST"])
 def home():
     """Logs each request, stores it in SQLite, and returns a success response."""
     timestamp = time.time()
-    ip = get_client_ip()
+    ips = get_client_ips()
     request_size = len(str(request.data))  # Approximate request size in bytes
 
-    # Insert into SQLite database
-    c.execute("INSERT INTO traffic_logs (ip, timestamp, request_size) VALUES (?, ?, ?)", 
-              (ip, timestamp, request_size))
-    conn.commit()
+    for ip in ips:
+        status = "normal"
+        if ip in MALICIOUS_IPS:
+            status = "malicious"
+        elif ip in BLOCKED_IPS:
+            status = "blocked"
 
-    return jsonify({"message": "Request received", "ip": ip, "size": request_size})
+        # Insert into SQLite database
+        c.execute("INSERT INTO traffic_logs (ip, timestamp, request_size, status) VALUES (?, ?, ?, ?)", 
+                  (ip, timestamp, request_size, status))
+        conn.commit()
+
+    return jsonify({"message": "Request logged", "ips": ips, "size": request_size})
 
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
     """Retrieve all logged traffic data from SQLite."""
-    c.execute("SELECT id, ip, timestamp, request_size FROM traffic_logs")
-    data = [{"id": row[0], "ip": row[1], "time": row[2], "size": row[3]} for row in c.fetchall()]
+    c.execute("SELECT id, ip, timestamp, request_size, status FROM traffic_logs")
+    data = [{"id": row[0], "ip": row[1], "time": row[2], "size": row[3], "status": row[4]} for row in c.fetchall()]
     return jsonify({"traffic_logs": data})
 
 @app.route("/traffic-graph", methods=["GET"])
 def traffic_graph():
     """Generates and returns a graph of traffic over time from SQLite."""
-
-    # Fetch timestamps from SQLite
     c.execute("SELECT timestamp FROM traffic_logs")
     data = c.fetchall()
 
@@ -92,39 +105,34 @@ def traffic_graph():
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
     """Detects unusual spikes in request rate and groups anomalies by IP"""
-
-    # Fetch timestamps and IPs from the traffic_logs table
     c.execute("SELECT ip, timestamp FROM traffic_logs")
     records = c.fetchall()
 
     if len(records) < 5:  # Not enough data for anomaly detection
         return jsonify({"message": "Not enough data for anomaly detection"})
 
-    # Organizing data by IP (handling multiple IPs per record)
-    ip_data = {}
-    for ip_entry, timestamp in records:
-        ip_list = ip_entry.split(", ")  # Split multiple IPs
-        for ip in ip_list:
-            if ip not in ip_data:
-                ip_data[ip] = []
-            ip_data[ip].append(timestamp)
+    ip_data = {}  # Group requests by IP
+    for ip, timestamp in records:
+        if ip not in ip_data:
+            ip_data[ip] = []
+        ip_data[ip].append(timestamp)
 
     anomalies_by_ip = {}
 
     for ip, timestamps in ip_data.items():
-        timestamps = sorted(timestamps)  # Ensure timestamps are in order
-        intervals = np.diff(timestamps)  # Time gaps between requests
+        timestamps = sorted(timestamps)
+        intervals = np.diff(timestamps)
 
         if len(intervals) < 1:
-            continue  # Skip if there's only one request
+            continue
 
         mean_interval = np.mean(intervals)
         std_interval = np.std(intervals)
 
-        if std_interval == 0:  # Avoid division by zero
+        if std_interval == 0:
             continue  
 
-        threshold = mean_interval - (1.5 * std_interval)  # Adjusted sensitivity
+        threshold = mean_interval - (1.5 * std_interval)
         anomalies = [timestamps[i] for i in range(1, len(timestamps)) if intervals[i - 1] < threshold]
 
         if anomalies:
