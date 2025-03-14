@@ -16,7 +16,7 @@ CORS(app)
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["100 per minute"]
+    default_limits=["500 per minute"]
 )
 
 # Initialize SQLite Database
