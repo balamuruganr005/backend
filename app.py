@@ -35,8 +35,10 @@ c.execute("""
 conn.commit()
 
 def get_client_ip():
-    """Extract real client IP address from request headers."""
-    return request.headers.get("X-Forwarded-For", request.remote_addr)
+    forwarded = request.headers.get("X-Forwarded-For", None)
+    if forwarded:
+        return forwarded.split(",")[0]  # Only store the first (real client) IP
+    return request.remote_addr
 
 @app.route("/", methods=["GET", "POST"])
 def home():
