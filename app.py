@@ -21,9 +21,9 @@ logging.basicConfig(level=logging.INFO)
 
 # Function to get SQLite connection (thread-safe)
 def get_db_connection():
-    with app.app_context():  # Ensures proper application context
-        conn = sqlite3.connect("traffic_data.db", check_same_thread=False)
-        return conn, conn.cursor()
+    conn = sqlite3.connect("traffic_data.db", check_same_thread=False)
+    return conn  # Return only the connection, not a tuple
+
 
 @app.teardown_appcontext
 def close_db_connection(exception):
