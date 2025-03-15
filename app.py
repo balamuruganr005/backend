@@ -51,6 +51,19 @@ IP_ANOMALY_COUNT = {}
 REPEATING_IP_THRESHOLD = 5
 ANOMALY_THRESHOLD = 3
 
+@app.route('/test_db', methods=['GET'])
+def test_db():
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT NOW();")  # Simple test query
+        result = c.fetchone()
+        c.close()
+        conn.close()
+        return jsonify({"status": "success", "db_time": result[0]})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
 # Function to insert traffic logs
 def insert_traffic_log(ip, request_size, status):
     conn = get_db_connection()
