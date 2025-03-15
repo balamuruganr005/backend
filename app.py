@@ -51,6 +51,52 @@ IP_ANOMALY_COUNT = {}
 REPEATING_IP_THRESHOLD = 5
 ANOMALY_THRESHOLD = 3
 
+def log_traffic(ip, request_size):
+    """
+    Logs traffic data into the PostgreSQL database.
+    Identifies if the traffic is normal or malicious.
+    """
+    global IP_ANOMALY_COUNT, MALICIOUS_IPS
+
+    timestamp = time.time()
+    status = "normal"
+
+    # Track IP request frequency
+    IP_ANOMALY_COUNT[ip] = IP_ANOMALY_COUNT.get(ip, 0) + 1
+
+    # Mark IP as malicious if it exceeds the threshold
+    if IP_ANOMALY_COUNT[ip] > REPEATING_IP_THRESHOLD:
+        status = "malicious"
+        MALICIOUS_IPS.add(ip)
+
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("INSERT INTO traffic_logs (ip, timestamp, request_size, status) VALUES (%s, %s, %s, %s)",
+                  (ip, timestamp, request_size, status))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error logging traffic: {e}")
+
+@app.route("/track", methods=["POST"])
+def track_request():
+    """
+    API endpoint to receive traffic data and log it into the database.
+    Expects JSON payload with 'ip' and 'request_size'.
+    """
+    data = request.json
+    ip = data.get("ip", request.remote_addr)  # Get client IP if not provided
+    request_size = data.get("request_size", 0)
+
+    if not ip:
+        return jsonify({"error": "IP address is required"}), 400
+
+    log_traffic(ip, request_size)
+    return jsonify({"message": "Traffic logged successfully", "ip": ip, "status": "logged"}), 200
+
+
 @app.route('/test_db', methods=['GET'])
 def test_db():
     try:
