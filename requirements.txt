@@ -4,3 +4,4 @@ gunicorn
 flask-cors
 matplotlib
 requests
+psycopg2
