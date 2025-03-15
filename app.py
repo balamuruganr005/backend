@@ -112,9 +112,8 @@ def traffic_graph():
 
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
-    """Detects unusual spikes, repeated IPs, and proxy IPs."""
     conn, c = get_db_connection()
-    c.execute("SELECT ip, timestamp FROM traffic_logs")
+    c.execute("SELECT ip, timestamp FROM traffic_logs WHERE timestamp IS NOT NULL")
     records = c.fetchall()
     conn.close()
 
@@ -129,56 +128,41 @@ def detect_anomaly():
 
     anomalies_by_ip = {}
     repeating_ips = set()
-    proxy_ips = set()
+
+    conn, c = get_db_connection()  # Open DB connection once for updates
 
     for ip, timestamps in ip_data.items():
         timestamps.sort()
-        intervals = np.diff(timestamps)
-
-        if len(intervals) < 1:
+        if len(timestamps) < 2:
             continue
 
+        intervals = np.diff(timestamps)
         mean_interval = np.mean(intervals)
         std_interval = np.std(intervals)
 
-        if std_interval == 0:
-            continue  
+        # Ensure threshold is positive to avoid incorrect filtering
+        threshold = max(mean_interval - (1.5 * std_interval), 0.1)  
 
-        threshold = mean_interval - (1.5 * std_interval)
         anomalies = [timestamps[i] for i in range(1, len(timestamps)) if intervals[i - 1] < threshold]
 
-        # 🚨 Detect repeating IPs
         if len(timestamps) > REPEATING_IP_THRESHOLD:
             repeating_ips.add(ip)
 
-        # 🚨 Detect proxy IPs
-        if is_proxy_ip(ip):
-            proxy_ips.add(ip)
-
         if anomalies:
             anomalies_by_ip[ip] = anomalies
-            conn, c = get_db_connection()
             c.execute("UPDATE traffic_logs SET status = 'malicious' WHERE ip = ?", (ip,))
-            conn.commit()
-            conn.close()
             IP_ANOMALY_COUNT[ip] = IP_ANOMALY_COUNT.get(ip, 0) + 1
 
-            # 🚨 Block IP if anomaly count exceeds threshold
-            if IP_ANOMALY_COUNT[ip] >= ANOMALY_THRESHOLD:
-                conn, c = get_db_connection()
-                c.execute("UPDATE traffic_logs SET status = 'blocked' WHERE ip = ?", (ip,))
-                conn.commit()
-                conn.close()
-                BLOCKED_IPS.add(ip)
+    conn.commit()
+    conn.close()  # Close DB connection after all updates
 
     return jsonify({
         "anomalies_by_ip": anomalies_by_ip,
         "repeating_ips": list(repeating_ips),
-        "proxy_ips": list(proxy_ips),
         "total_ips_with_anomalies": len(anomalies_by_ip),
-        "total_repeating_ips": len(repeating_ips),
-        "total_proxy_ips": len(proxy_ips)
+        "total_repeating_ips": len(repeating_ips)
     })
+
 
 @app.route("/unblock-ip", methods=["POST"])
 def unblock_ip():
