@@ -19,30 +19,37 @@ limiter = Limiter(get_remote_address, app=app, default_limits=["500 per minute"]
 # Load PostgreSQL Database URL
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable not set")
+
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
 
 # Create table if not exists
-conn = get_db_connection()
-c = conn.cursor()
-c.execute("""
-    CREATE TABLE IF NOT EXISTS traffic_logs (
-        id SERIAL PRIMARY KEY,
-        ip TEXT,
-        timestamp REAL,
-        request_size INTEGER,
-        status TEXT DEFAULT 'normal'
-    )
-""")
-conn.commit()
-conn.close()
+try:
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS traffic_logs (
+            id SERIAL PRIMARY KEY,
+            ip TEXT,
+            timestamp REAL,
+            request_size INTEGER,
+            status TEXT DEFAULT 'normal'
+        )
+    """)
+    conn.commit()
+    c.close()
+    conn.close()
+except Exception as e:
+    print(f"Error connecting to database: {e}")
 
 # Define thresholds and tracking
 MALICIOUS_IPS = set()
 BLOCKED_IPS = set()
-IP_ANOMALY_COUNT = {}  
-REPEATING_IP_THRESHOLD = 5  
-ANOMALY_THRESHOLD = 3  
+IP_ANOMALY_COUNT = {}
+REPEATING_IP_THRESHOLD = 5
+ANOMALY_THRESHOLD = 3
 
 # Function to insert traffic logs
 def insert_traffic_log(ip, request_size, status):
