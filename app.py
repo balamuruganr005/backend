@@ -53,18 +53,6 @@ ANOMALY_THRESHOLD = 3
 
 import requests
 
-TRTCM_URL = "http://localhost:5001/"
-
-def log_traffic_to_trTCM(ip, request_size):
-    """Send traffic details to trTCM Flask API."""
-    data = {"ip": ip, "request_size": request_size}
-    try:
-        response = requests.post(TRTCM_URL, json=data)
-        print("🔄 Sent Traffic Data:", response.json())
-    except Exception as e:
-        print(f"⚠️ Error sending traffic data: {e}")
-
-
 def get_geolocation(ip):
     try:
         response = requests.get(f"http://ip-api.com/json/{ip}")
