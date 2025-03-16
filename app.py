@@ -14,14 +14,6 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-from datetime import datetime
-
-timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-
-app.config["RATELIMIT_STORAGE_URL"] = "redis://localhost:6379/0"
-limiter = Limiter(get_remote_address, app=app, storage_uri="redis://localhost:6379/0")
-
 
 # Initialize rate limiter (prevents DDoS)
 limiter = Limiter(get_remote_address, app=app, default_limits=["500 per minute"])
