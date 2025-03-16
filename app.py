@@ -54,16 +54,20 @@ ANOMALY_THRESHOLD = 3
 import requests
 
 def get_geolocation(ip):
-    """Fetch geolocation details for an IP address."""
     try:
-        response = requests.get(f"http://ip-api.com/json/{ip}")
+        response = requests.get(f"https://ipapi.co/{ip}/json/")
         data = response.json()
-        if data["status"] == "fail":
-            return "Unknown", "Unknown", 0.0, 0.0
-        return data.get("country", "Unknown"), data.get("city", "Unknown"), data.get("lat", 0.0), data.get("lon", 0.0)
+        country = data.get("country_name")
+        city = data.get("city")
+        latitude = data.get("latitude")
+        longitude = data.get("longitude")
+        
+        print(f"Geo Data for {ip}: Country={country}, City={city}, Lat={latitude}, Lon={longitude}")
+        return country, city, latitude, longitude
     except Exception as e:
-        print(f"Geolocation API error: {e}")
-        return "Unknown", "Unknown", 0.0, 0.0
+        print(f"Error fetching geolocation: {e}")
+        return None, None, None, None
+
 def update_traffic_logs_schema():
     """Ensure all required columns exist in traffic_logs."""
     try:
@@ -125,9 +129,6 @@ check_and_fix_schema()
 
 
 def log_traffic(ip, request_size, request_type, destination_port, user_agent):
-    """
-    Logs traffic data into the PostgreSQL database.
-    """
     global IP_ANOMALY_COUNT, MALICIOUS_IPS
 
     timestamp = time.time()
@@ -141,6 +142,8 @@ def log_traffic(ip, request_size, request_type, destination_port, user_agent):
 
     # Fetch geolocation
     country, city, latitude, longitude = get_geolocation(ip)
+
+    print(f"Logging: IP={ip}, RequestType={request_type}, Country={country}, UserAgent={user_agent}")
 
     try:
         conn = get_db_connection()
