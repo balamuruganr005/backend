@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from redis import Redis
 from datetime import datetime
 import matplotlib.pyplot as plt
 import io
@@ -12,6 +13,10 @@ import os
 
 app = Flask(__name__)
 CORS(app)
+
+app.config["RATELIMIT_STORAGE_URL"] = "redis://localhost:6379/0"
+limiter = Limiter(get_remote_address, app=app, storage_uri="redis://localhost:6379/0")
+
 
 # Initialize rate limiter (prevents DDoS)
 limiter = Limiter(get_remote_address, app=app, default_limits=["500 per minute"])
@@ -167,7 +172,7 @@ def test_db():
         return jsonify({"status": "error", "message": str(e)})
 
 # Function to insert traffic logs
-def insert_traffic_log(ip, timestamp, request_size, status):
+insert_traffic_log(ip, request_size, "normal", "legitimate")  # Add a status
     country, city, latitude, longitude = get_geolocation(ip)
     
     conn = get_db_connection()
