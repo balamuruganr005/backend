@@ -65,6 +65,42 @@ def get_geolocation(ip):
         print(f"Geolocation API error: {e}")
         return "Unknown", "Unknown", 0.0, 0.0
 
+def check_and_fix_schema():
+    """Ensure all required columns exist in PostgreSQL."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # List existing columns
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'traffic_logs';")
+        existing_columns = {row[0] for row in cur.fetchall()}
+
+        # Define required columns
+        required_columns = {
+            "request_type": "VARCHAR(10)",
+            "destination_port": "INT",
+            "user_agent": "TEXT"
+        }
+
+        # Add missing columns
+        for column, datatype in required_columns.items():
+            if column not in existing_columns:
+                alter_query = f"ALTER TABLE traffic_logs ADD COLUMN {column} {datatype};"
+                cur.execute(alter_query)
+                print(f"✅ Added missing column: {column}")
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("✅ Schema check completed successfully!")
+
+    except Exception as e:
+        print(f"❌ Error while modifying schema: {e}")
+
+# Run this at the start of `app.py`
+check_and_fix_schema()
+
+
 def log_traffic(ip, request_size, request_type="HTTP", destination_port=80):
     """
     Logs traffic data into PostgreSQL.
