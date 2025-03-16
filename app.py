@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-import time
+from datetime import datetime
 import matplotlib.pyplot as plt
 import io
 import psycopg2
@@ -109,7 +109,7 @@ if __name__ == "__main__":
 def log_traffic(ip, request_size, request_type, destination_port, user_agent):
     global IP_ANOMALY_COUNT, MALICIOUS_IPS
 
-    timestamp = time.time()
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     status = "normal"
 
     # Detect malicious traffic
@@ -184,7 +184,7 @@ def insert_traffic_log(ip, timestamp, request_size, status):
 
 @app.route("/", methods=["GET", "POST"])
 def home():
-    timestamp = time.time()
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     ip = request.remote_addr
     request_size = len(str(request.data))
     insert_traffic_log(ip, request_size, "normal")
