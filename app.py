@@ -168,7 +168,7 @@ def test_db():
         return jsonify({"status": "error", "message": str(e)})
 
 # Function to insert traffic logs
-insert_traffic_log(ip, request_size, "normal", "legitimate")  # Add a status
+insert_traffic_log(ip, request_size, "normal", "legitimate"):  # Add a status
     country, city, latitude, longitude = get_geolocation(ip)
     
     conn = get_db_connection()
