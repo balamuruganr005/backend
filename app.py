@@ -68,32 +68,8 @@ def get_geolocation(ip):
         print(f"Error fetching geolocation: {e}")
         return None, None, None, None
 
-def update_traffic_logs_schema():
-    """Ensure all required columns exist in traffic_logs."""
-    try:
-        conn = get_db_connection()
-        c = conn.cursor()
-        
-        # Add missing columns if they do not exist
-        c.execute("ALTER TABLE traffic_logs ADD COLUMN IF NOT EXISTS request_type TEXT;")
-        c.execute("ALTER TABLE traffic_logs ADD COLUMN IF NOT EXISTS destination_port INTEGER;")
-        c.execute("ALTER TABLE traffic_logs ADD COLUMN IF NOT EXISTS country TEXT;")
-        c.execute("ALTER TABLE traffic_logs ADD COLUMN IF NOT EXISTS city TEXT;")
-        c.execute("ALTER TABLE traffic_logs ADD COLUMN IF NOT EXISTS user_agent TEXT;")
-        
-        conn.commit()
-        c.close()
-        conn.close()
-        print("✅ Schema updated successfully!")
-    except Exception as e:
-        print(f"❌ Error updating schema: {e}")
-
-# Run this function once
-update_traffic_logs_schema()
-
-
-def check_and_fix_schema():
-    """Ensure all required columns exist in PostgreSQL."""
+def update_and_check_schema():
+    """Ensure all required columns exist in traffic_logs (only runs once)."""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -102,30 +78,32 @@ def check_and_fix_schema():
         cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'traffic_logs';")
         existing_columns = {row[0] for row in cur.fetchall()}
 
-        # Define required columns
+        # Define required columns and their types
         required_columns = {
-            "request_type": "VARCHAR(10)",
-            "destination_port": "INT",
+            "request_type": "TEXT",
+            "destination_port": "INTEGER",
+            "country": "TEXT",
+            "city": "TEXT",
             "user_agent": "TEXT"
         }
 
-        # Add missing columns
+        # Add missing columns if they don't exist
         for column, datatype in required_columns.items():
             if column not in existing_columns:
-                alter_query = f"ALTER TABLE traffic_logs ADD COLUMN {column} {datatype};"
-                cur.execute(alter_query)
+                cur.execute(f"ALTER TABLE traffic_logs ADD COLUMN {column} {datatype};")
                 print(f"✅ Added missing column: {column}")
 
         conn.commit()
         cur.close()
         conn.close()
-        print("✅ Schema check completed successfully!")
+        print("✅ Schema update and check completed successfully!")
 
     except Exception as e:
-        print(f"❌ Error while modifying schema: {e}")
+        print(f"❌ Error updating schema: {e}")
 
-# Run this at the start of `app.py`
-check_and_fix_schema()
+# Run only once
+if __name__ == "__main__":
+    update_and_check_schema()
 
 
 def log_traffic(ip, request_size, request_type, destination_port, user_agent):
