@@ -54,48 +54,22 @@ ANOMALY_THRESHOLD = 3
 import requests
 
 def get_geolocation(ip):
+    """Fetch geolocation details for an IP address."""
     try:
         response = requests.get(f"http://ip-api.com/json/{ip}")
         data = response.json()
-
-        if data["status"] == "fail":
-            return None, None, None, None  # If the lookup fails
-
-        country = data.get("country", "Unknown")
-        city = data.get("city", "Unknown")
-        latitude = data.get("lat", 0.0)
-        longitude = data.get("lon", 0.0)
-
-        return country, city, latitude, longitude
-
-    except Exception as e:
-        print(f"Geolocation API error: {e}")
-        return None, None, None, None
-
-import requests
-
-def get_geolocation(ip):
-    """
-    Fetch geolocation details for an IP address.
-    """
-    try:
-        response = requests.get(f"http://ip-api.com/json/{ip}")
-        data = response.json()
-
         if data["status"] == "fail":
             return "Unknown", "Unknown", 0.0, 0.0
-
         return data.get("country", "Unknown"), data.get("city", "Unknown"), data.get("lat", 0.0), data.get("lon", 0.0)
-
     except Exception as e:
         print(f"Geolocation API error: {e}")
         return "Unknown", "Unknown", 0.0, 0.0
 
-
-def log_traffic(ip, request_size):
+def log_traffic(ip, request_size, request_type="HTTP", destination_port=80):
     """
-    Logs traffic data into the PostgreSQL database.
-    Identifies if the traffic is normal or malicious and includes geolocation.
+    Logs traffic data into PostgreSQL.
+    - Classifies traffic (normal/malicious)
+    - Includes geolocation, request type, port, and user agent
     """
     global IP_ANOMALY_COUNT, MALICIOUS_IPS
 
@@ -113,20 +87,24 @@ def log_traffic(ip, request_size):
     # Fetch geolocation
     country, city, latitude, longitude = get_geolocation(ip)
 
+    # Get User-Agent info
+    user_agent = request.headers.get("User-Agent", "Unknown")
+
     try:
         conn = get_db_connection()
         c = conn.cursor()
         c.execute("""
-            INSERT INTO traffic_logs (ip, timestamp, request_size, status, country, city, latitude, longitude)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, (ip, timestamp, request_size, status, country, city, latitude, longitude))
+            INSERT INTO traffic_logs (ip, timestamp, request_size, status, country, city, latitude, longitude, request_type, destination_port, user_agent)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (ip, timestamp, request_size, status, country, city, latitude, longitude, request_type, destination_port, user_agent))
         
         conn.commit()
         c.close()
         conn.close()
-    except Exception as e:
-        print(f"Error logging traffic: {e}")
+        print(f"✅ Logged Traffic: {ip}, {request_type}, Port {destination_port}, Status: {status}")
 
+    except Exception as e:
+        print(f"❌ Error logging traffic: {e}")
 
 @app.route("/track", methods=["POST"])
 def track_request():
