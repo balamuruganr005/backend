@@ -210,25 +210,34 @@ def traffic_graph():
     conn.close()
 
     if not data:
-        return jsonify({"error": "No data available"})
+        return jsonify({"error": "No data available"}), 500
 
-    times = [row[0] for row in data if row[0] is not None]
+    # Convert timestamps correctly
+    times = []
+    for row in data:
+        t = row[0]
+        if isinstance(t, int):  # If stored as Unix timestamp
+            times.append(time.strftime("%H:%M:%S", time.localtime(t)))
+        elif hasattr(t, "strftime"):  # If stored as datetime object
+            times.append(t.strftime("%H:%M:%S"))
+
     if not times:
-        return jsonify({"error": "Invalid timestamps in database"})
+        return jsonify({"error": "Invalid timestamps in database"}), 500
 
-    timestamps = [time.strftime("%H:%M:%S", time.localtime(t)) for t in times]
+    # Plot traffic graph
     plt.figure(figsize=(10, 5))
-    plt.step(timestamps, range(len(timestamps)), marker="o", linestyle="-", color="b")
+    plt.step(times, range(len(times)), marker="o", linestyle="-", color="b")
     plt.xlabel("Time")
     plt.ylabel("Requests")
     plt.title("Traffic Flow Over Time")
     plt.xticks(rotation=45)
 
-    img_path = "traffic_graph.png"
+    # Save to a temporary file
+    img_path = "/tmp/traffic_graph.png"  # Use a temporary directory
     plt.savefig(img_path)
     plt.close()
-    
-    return send_file(img_path, mimetype='image/png')
+
+    return send_file(img_path, mimetype="image/png")
 
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
