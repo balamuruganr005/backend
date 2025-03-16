@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from redis import Redis
 from datetime import datetime
 import matplotlib.pyplot as plt
 import io
