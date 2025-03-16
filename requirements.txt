@@ -5,4 +5,3 @@ flask-cors
 matplotlib
 requests
 psycopg2
-redis
