@@ -24,28 +24,40 @@ if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable not set")
 
 def get_db_connection():
-    return psycopg2.connect(DATABASE_URL)
+    try:
+        return psycopg2.connect(DATABASE_URL)
+    except Exception as e:
+        print(f"Database Connection Error: {e}")
+        return None
 
 # Create table if not exists
 try:
     conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS traffic_logs (
-            id SERIAL PRIMARY KEY,
-            ip TEXT,
-            timestamp REAL,
-            request_size INTEGER,
-            status TEXT DEFAULT 'normal'
-        )
-    """)
-    conn.commit()
-    c.close()
-    conn.close()
+    if conn:
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS traffic_logs (
+                id SERIAL PRIMARY KEY,
+                ip TEXT,
+                timestamp REAL,
+                request_size INTEGER,
+                request_type TEXT,
+                destination_port INTEGER,
+                user_agent TEXT,
+                status TEXT DEFAULT 'normal',
+                country TEXT,
+                city TEXT,
+                latitude REAL,
+                longitude REAL
+            )
+        """)
+        conn.commit()
+        c.close()
+        conn.close()
 except Exception as e:
-    print(f"Error connecting to database: {e}")
+    print(f"Error setting up database: {e}")
 
-# Define thresholds and tracking
+# Track malicious IPs
 MALICIOUS_IPS = set()
 BLOCKED_IPS = set()
 IP_ANOMALY_COUNT = {}
@@ -58,13 +70,7 @@ def get_geolocation(ip):
     try:
         response = requests.get(f"https://ipapi.co/{ip}/json/")
         data = response.json()
-        country = data.get("country_name")
-        city = data.get("city")
-        latitude = data.get("latitude")
-        longitude = data.get("longitude")
-        
-        print(f"Geo Data for {ip}: Country={country}, City={city}, Lat={latitude}, Lon={longitude}")
-        return country, city, latitude, longitude
+        return data.get("country_name"), data.get("city"), data.get("latitude"), data.get("longitude")
     except Exception as e:
         print(f"Error fetching geolocation: {e}")
         return None, None, None, None
@@ -122,19 +128,17 @@ def log_traffic(ip, request_size, request_type, destination_port, user_agent):
     # Fetch geolocation
     country, city, latitude, longitude = get_geolocation(ip)
 
-    print(f"Logging: IP={ip}, RequestType={request_type}, Country={country}, UserAgent={user_agent}")
-
     try:
         conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("""
-            INSERT INTO traffic_logs (ip, timestamp, request_size, request_type, destination_port, user_agent, status, country, city)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (ip, timestamp, request_size, request_type, destination_port, user_agent, status, country, city))
-        
-        conn.commit()
-        c.close()
-        conn.close()
+        if conn:
+            c = conn.cursor()
+            c.execute("""
+                INSERT INTO traffic_logs (ip, timestamp, request_size, request_type, destination_port, user_agent, status, country, city, latitude, longitude)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (ip, timestamp, request_size, request_type, destination_port, user_agent, status, country, city, latitude, longitude))
+            conn.commit()
+            c.close()
+            conn.close()
     except Exception as e:
         print(f"Error logging traffic: {e}")
 
@@ -195,52 +199,63 @@ def home():
     insert_traffic_log(ip, request_size, "normal")
     return jsonify({"message": "Request logged", "ip": ip, "size": request_size})
 
-@app.route("/traffic-data", methods=["GET"])
-def get_traffic_data():
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT id, ip, timestamp, request_size, status FROM traffic_logs")
-    data = [{"id": row[0], "ip": row[1], "time": row[2], "size": row[3], "status": row[4]} for row in c.fetchall()]
-    conn.close()
-    return jsonify({"traffic_logs": data})
+@app.route("/track", methods=["POST"])
+def track_request():
+    data = request.json
+    ip = data.get("ip", request.remote_addr)
+    request_size = data.get("request_size", 0)
+    request_type = data.get("request_type", "unknown")
+    destination_port = data.get("destination_port", 80)
+    user_agent = request.headers.get("User-Agent", "unknown")
+
+    if not ip:
+        return jsonify({"error": "IP address is required"}), 400
+
+    log_traffic(ip, request_size, request_type, destination_port, user_agent)
+    return jsonify({"message": "Traffic logged successfully", "ip": ip, "status": "logged"}), 200
 
 @app.route("/traffic-graph", methods=["GET"])
 def traffic_graph():
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT timestamp FROM traffic_logs")
-    data = c.fetchall()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"error": "Database connection failed"}), 500
+        
+        c = conn.cursor()
+        c.execute("SELECT timestamp FROM traffic_logs")
+        data = c.fetchall()
+        conn.close()
 
-    if not data:
-        return jsonify({"error": "No data available"}), 500
+        if not data:
+            return jsonify({"error": "No data available"}), 500
 
-    # Convert timestamps correctly
-    times = []
-    for row in data:
-        t = row[0]
-        if isinstance(t, int):  # If stored as Unix timestamp
-            times.append(time.strftime("%H:%M:%S", time.localtime(t)))
-        elif hasattr(t, "strftime"):  # If stored as datetime object
-            times.append(t.strftime("%H:%M:%S"))
+        times = []
+        for row in data:
+            t = row[0]
+            if isinstance(t, float) or isinstance(t, int):
+                times.append(datetime.utcfromtimestamp(t).strftime("%H:%M:%S"))
+            elif hasattr(t, "strftime"):
+                times.append(t.strftime("%H:%M:%S"))
 
-    if not times:
-        return jsonify({"error": "Invalid timestamps in database"}), 500
+        if not times:
+            return jsonify({"error": "Invalid timestamps in database"}), 500
 
-    # Plot traffic graph
-    plt.figure(figsize=(10, 5))
-    plt.step(times, range(len(times)), marker="o", linestyle="-", color="b")
-    plt.xlabel("Time")
-    plt.ylabel("Requests")
-    plt.title("Traffic Flow Over Time")
-    plt.xticks(rotation=45)
+        # Plot traffic graph
+        plt.figure(figsize=(10, 5))
+        plt.step(times, range(len(times)), marker="o", linestyle="-", color="b")
+        plt.xlabel("Time")
+        plt.ylabel("Requests")
+        plt.title("Traffic Flow Over Time")
+        plt.xticks(rotation=45)
 
-    # Save to a temporary file
-    img_path = "/tmp/traffic_graph.png"  # Use a temporary directory
-    plt.savefig(img_path)
-    plt.close()
+        # Save to a temporary file
+        img_path = "/tmp/traffic_graph.png"
+        plt.savefig(img_path)
+        plt.close()
 
-    return send_file(img_path, mimetype="image/png")
+        return send_file(img_path, mimetype="image/png")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
