@@ -168,9 +168,12 @@ def test_db():
         return jsonify({"status": "error", "message": str(e)})
 
 # Function to insert traffic logs
+from datetime import datetime
+
 def insert_traffic_log(ip, request_size, status="normal", category="legitimate"):
+    timestamp = datetime.now()  # ✅ Define timestamp
     country, city, latitude, longitude = get_geolocation(ip)
-    
+
     conn = get_db_connection()
     cur = conn.cursor()
 
