@@ -168,7 +168,7 @@ def test_db():
         return jsonify({"status": "error", "message": str(e)})
 
 # Function to insert traffic logs
-def insert_traffic_log(ip, request_size, "normal", "legitimate"):  # Add a status
+def insert_traffic_log(ip, request_size, status="normal", category="legitimate"):
     country, city, latitude, longitude = get_geolocation(ip)
     
     conn = get_db_connection()
@@ -182,6 +182,7 @@ def insert_traffic_log(ip, request_size, "normal", "legitimate"):  # Add a statu
     conn.commit()
     cur.close()
     conn.close()
+
 
 @app.route("/", methods=["GET", "POST"])
 def home():
