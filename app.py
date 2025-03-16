@@ -64,6 +64,29 @@ def get_geolocation(ip):
     except Exception as e:
         print(f"Geolocation API error: {e}")
         return "Unknown", "Unknown", 0.0, 0.0
+def update_traffic_logs_schema():
+    """Ensure all required columns exist in traffic_logs."""
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        # Add missing columns if they do not exist
+        c.execute("ALTER TABLE traffic_logs ADD COLUMN IF NOT EXISTS request_type TEXT;")
+        c.execute("ALTER TABLE traffic_logs ADD COLUMN IF NOT EXISTS destination_port INTEGER;")
+        c.execute("ALTER TABLE traffic_logs ADD COLUMN IF NOT EXISTS country TEXT;")
+        c.execute("ALTER TABLE traffic_logs ADD COLUMN IF NOT EXISTS city TEXT;")
+        c.execute("ALTER TABLE traffic_logs ADD COLUMN IF NOT EXISTS user_agent TEXT;")
+        
+        conn.commit()
+        c.close()
+        conn.close()
+        print("✅ Schema updated successfully!")
+    except Exception as e:
+        print(f"❌ Error updating schema: {e}")
+
+# Run this function once
+update_traffic_logs_schema()
+
 
 def check_and_fix_schema():
     """Ensure all required columns exist in PostgreSQL."""
@@ -101,21 +124,17 @@ def check_and_fix_schema():
 check_and_fix_schema()
 
 
-def log_traffic(ip, request_size, request_type="HTTP", destination_port=80):
+def log_traffic(ip, request_size, request_type, destination_port, user_agent):
     """
-    Logs traffic data into PostgreSQL.
-    - Classifies traffic (normal/malicious)
-    - Includes geolocation, request type, port, and user agent
+    Logs traffic data into the PostgreSQL database.
     """
     global IP_ANOMALY_COUNT, MALICIOUS_IPS
 
     timestamp = time.time()
     status = "normal"
 
-    # Track IP request frequency
+    # Detect malicious traffic
     IP_ANOMALY_COUNT[ip] = IP_ANOMALY_COUNT.get(ip, 0) + 1
-
-    # Mark IP as malicious if it exceeds the threshold
     if IP_ANOMALY_COUNT[ip] > REPEATING_IP_THRESHOLD:
         status = "malicious"
         MALICIOUS_IPS.add(ip)
@@ -123,26 +142,20 @@ def log_traffic(ip, request_size, request_type="HTTP", destination_port=80):
     # Fetch geolocation
     country, city, latitude, longitude = get_geolocation(ip)
 
-    # Get User-Agent info
-    user_agent = request.headers.get("User-Agent", "Unknown")
-
     try:
         conn = get_db_connection()
         c = conn.cursor()
         c.execute("""
-            INSERT INTO traffic_logs (ip, timestamp, request_size, status, country, city, latitude, longitude, request_type, destination_port, user_agent)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (ip, timestamp, request_size, status, country, city, latitude, longitude, request_type, destination_port, user_agent))
+            INSERT INTO traffic_logs (ip, timestamp, request_size, request_type, destination_port, user_agent, status, country, city)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (ip, timestamp, request_size, request_type, destination_port, user_agent, status, country, city))
         
         conn.commit()
         c.close()
         conn.close()
-        print(f"✅ Logged Traffic: {ip}, {request_type}, Port {destination_port}, Status: {status}")
-
     except Exception as e:
-        print(f"❌ Error logging traffic: {e}")
+        print(f"Error logging traffic: {e}")
 
-@app.route("/track", methods=["POST"])
 def track_request():
     """
     API endpoint to receive traffic data and log it into the database.
