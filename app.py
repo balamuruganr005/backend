@@ -244,35 +244,6 @@ def track_request():
     log_traffic(ip, request_size, request_type, destination_port, user_agent)
     return jsonify({"message": "Traffic logged successfully", "ip": ip, "status": "logged"}), 200
 
-@app.route("/traffic-data", methods=["GET"])
-def get_traffic_data():
-    try:
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({"error": "Database connection failed"}), 500
-
-        c = conn.cursor()
-        c.execute("SELECT ip, timestamp, request_size, request_type, destination_port, user_agent, status FROM traffic_logs ORDER BY timestamp DESC LIMIT 100")
-        data = c.fetchall()
-        conn.close()
-
-        # Convert data into JSON format
-        traffic_list = []
-        for row in data:
-            traffic_list.append({
-                "ip": row[0],
-                "timestamp": row[1],
-                "request_size": row[2],
-                "request_type": row[3],
-                "destination_port": row[4],
-                "user_agent": row[5],
-                "status": row[6],
-            })
-
-        return jsonify({"traffic_logs": traffic_list}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 
 @app.route("/traffic-graph", methods=["GET"])
 def traffic_graph():
