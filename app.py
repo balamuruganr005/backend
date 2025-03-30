@@ -228,26 +228,6 @@ def get_traffic_data():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def clear_old_data():
-    conn = get_db_connection()
-    if not conn:
-        print("Database connection failed. Could not clear old data.")
-        return
-    
-    try:
-        cur = conn.cursor()
-        cur.execute("TRUNCATE TABLE traffic_logs RESTART IDENTITY;")
-        conn.commit()
-        cur.close()
-        print("Old traffic data cleared successfully.")
-    except Exception as e:
-        print(f"Error clearing old data: {e}")
-    finally:
-        release_db_connection(conn)
-
-# Call this function when the app starts
-clear_old_data()
-
 
 @app.route("/track", methods=["POST"])
 def track_request():
