@@ -15,7 +15,7 @@ CORS(app)
 
 
 # Initialize rate limiter (prevents DDoS)
-limiter = Limiter(get_remote_address, app=app, default_limits=["500 per minute"])
+limiter = Limiter(get_remote_address, app=app, default_limits=["2000 per minute"])
 
 # Load PostgreSQL Database URL
 DATABASE_URL = os.getenv("DATABASE_URL")
