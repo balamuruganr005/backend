@@ -55,6 +55,22 @@ try:
 except Exception as e:
     print(f"Error setting up database: {e}")
 
+@app.route("/test-db", methods=["GET"])
+def test_db():
+    try:
+        conn = get_db_connection()
+        if conn:
+            cur = conn.cursor()
+            cur.execute("SELECT 1")  # Simple query to check connection
+            cur.close()
+            conn.close()
+            return jsonify({"message": "Database connection successful"}), 200
+        else:
+            return jsonify({"error": "Database connection failed"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # Function to fetch IP geolocation
 def get_geolocation(ip):
     try:
