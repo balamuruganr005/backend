@@ -117,7 +117,7 @@ def track_request():
     log_traffic(ip, request_size, request_type, destination_port, user_agent)
     return jsonify({"message": "Traffic logged successfully", "ip": ip, "status": "logged"}), 200
 
-@app.route('/test_db', methods=['GET'])
+@app.route('/test-db', methods=['GET'])
 def test_db():
     try:
         conn = get_db_connection()
@@ -193,15 +193,25 @@ def traffic_graph():
             return jsonify({"error": "Database connection failed"}), 500
         
         c = conn.cursor()
-        c.execute("SELECT timestamp FROM traffic_logs ORDER BY timestamp ASC")
+        c.execute("SELECT timestamp FROM traffic_logs")
         data = c.fetchall()
         conn.close()
 
         if not data:
             return jsonify({"error": "No data available"}), 500
 
-        times = [row[0].strftime("%H:%M:%S") for row in data if isinstance(row[0], datetime)]  # ✅ Fix timestamp format
+        times = []
+        for row in data:
+            t = row[0]
+            if isinstance(t, float) or isinstance(t, int):
+                times.append(datetime.utcfromtimestamp(t).strftime("%H:%M:%S"))
+            elif hasattr(t, "strftime"):
+                times.append(t.strftime("%H:%M:%S"))
 
+        if not times:
+            return jsonify({"error": "Invalid timestamps in database"}), 500
+
+        # Plot traffic graph
         plt.figure(figsize=(10, 5))
         plt.step(times, range(len(times)), marker="o", linestyle="-", color="b")
         plt.xlabel("Time")
@@ -209,6 +219,7 @@ def traffic_graph():
         plt.title("Traffic Flow Over Time")
         plt.xticks(rotation=45)
 
+        # Save to a temporary file
         img_path = "/tmp/traffic_graph.png"
         plt.savefig(img_path)
         plt.close()
@@ -216,7 +227,6 @@ def traffic_graph():
         return send_file(img_path, mimetype="image/png")
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
     conn = get_db_connection()
