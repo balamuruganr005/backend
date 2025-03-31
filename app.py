@@ -62,7 +62,6 @@ update_schema()  # Run this once when the app starts
 MALICIOUS_IPS = set()
 IP_ANOMALY_COUNT = {}
 REPEATING_IP_THRESHOLD = 5
-ANOMALY_THRESHOLD = 3
 
 def get_geolocation(ip):
     try:
@@ -117,36 +116,6 @@ def track_request():
     log_traffic(ip, request_size, request_type, destination_port, user_agent)
     return jsonify({"message": "Traffic logged successfully", "ip": ip, "status": "logged"}), 200
 
-@app.route('/test-db', methods=['GET'])
-def test_db():
-    try:
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("SELECT NOW();")  # Simple test query
-        result = c.fetchone()
-        c.close()
-        conn.close()
-        return jsonify({"status": "success", "db_time": result[0]})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
-
-def insert_traffic_log(ip, request_size, status="normal", category="legitimate"):
-    timestamp = datetime.now()  # ✅ Define timestamp
-    country, city, latitude, longitude = get_geolocation(ip)
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        INSERT INTO traffic_logs (ip, timestamp, request_size, status, country, city, latitude, longitude)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-    """, (ip, timestamp, request_size, status, country, city, latitude, longitude))
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-
 @app.route("/", methods=["GET", "POST"])
 def home():
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -154,7 +123,6 @@ def home():
     request_size = len(str(request.data))
     insert_traffic_log(ip, request_size, "normal")
     return jsonify({"message": "Request logged", "ip": ip, "size": request_size})
-
 
 
 @app.route("/traffic-data", methods=["GET"])
@@ -193,25 +161,15 @@ def traffic_graph():
             return jsonify({"error": "Database connection failed"}), 500
         
         c = conn.cursor()
-        c.execute("SELECT timestamp FROM traffic_logs")
+        c.execute("SELECT timestamp FROM traffic_logs ORDER BY timestamp ASC")
         data = c.fetchall()
         conn.close()
 
         if not data:
             return jsonify({"error": "No data available"}), 500
 
-        times = []
-        for row in data:
-            t = row[0]
-            if isinstance(t, float) or isinstance(t, int):
-                times.append(datetime.utcfromtimestamp(t).strftime("%H:%M:%S"))
-            elif hasattr(t, "strftime"):
-                times.append(t.strftime("%H:%M:%S"))
+        times = [row[0].strftime("%H:%M:%S") for row in data if isinstance(row[0], datetime)]  # ✅ Fix timestamp format
 
-        if not times:
-            return jsonify({"error": "Invalid timestamps in database"}), 500
-
-        # Plot traffic graph
         plt.figure(figsize=(10, 5))
         plt.step(times, range(len(times)), marker="o", linestyle="-", color="b")
         plt.xlabel("Time")
@@ -219,7 +177,6 @@ def traffic_graph():
         plt.title("Traffic Flow Over Time")
         plt.xticks(rotation=45)
 
-        # Save to a temporary file
         img_path = "/tmp/traffic_graph.png"
         plt.savefig(img_path)
         plt.close()
@@ -227,6 +184,7 @@ def traffic_graph():
         return send_file(img_path, mimetype="image/png")
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
     conn = get_db_connection()
@@ -249,10 +207,7 @@ def detect_anomaly():
 
     for ip, timestamps in ip_data.items():
         timestamps.sort()
-        if len(timestamps) < 2:
-            continue
-
-        intervals = np.diff(timestamps)
+        intervals = np.diff([t.timestamp() for t in timestamps])  # ✅ Convert datetime to timestamp
         mean_interval = np.mean(intervals)
         std_interval = np.std(intervals)
         threshold = max(mean_interval - (1.5 * std_interval), 0.1)  
@@ -263,20 +218,9 @@ def detect_anomaly():
             repeating_ips.add(ip)
 
         if anomalies:
-            anomalies_by_ip[ip] = anomalies
-            conn = get_db_connection()
-            c = conn.cursor()
-            c.execute("UPDATE traffic_logs SET status = 'malicious' WHERE ip = %s", (ip,))
-            conn.commit()
-            conn.close()
-            IP_ANOMALY_COUNT[ip] = IP_ANOMALY_COUNT.get(ip, 0) + 1
+            anomalies_by_ip[ip] = [t.strftime("%Y-%m-%d %H:%M:%S") for t in anomalies]  # ✅ Format timestamps properly
 
-    return jsonify({
-        "anomalies_by_ip": anomalies_by_ip,
-        "repeating_ips": list(repeating_ips),
-        "total_ips_with_anomalies": len(anomalies_by_ip),
-        "total_repeating_ips": len(repeating_ips)
-    })
+    return jsonify({"anomalies_by_ip": anomalies_by_ip, "repeating_ips": list(repeating_ips)})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
