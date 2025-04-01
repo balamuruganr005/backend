@@ -36,6 +36,29 @@ def initialize_db():
 # Initialize database when the app starts
 initialize_db()
 
+# Add some test data if the table is empty
+def insert_test_data():
+    conn = get_db_connection()
+    c = conn.cursor()
+
+    # Insert sample data if the table is empty
+    c.execute("SELECT COUNT(*) FROM traffic_logs;")
+    count = c.fetchone()[0]
+    
+    if count == 0:
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        c.execute("""
+            INSERT INTO traffic_logs (ip, timestamp, request_size, request_type, destination_port, user_agent, status, country, city, latitude, longitude)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, ('127.0.0.1', timestamp, 1234, 'GET', 80, 'Mozilla/5.0', 'normal', 'USA', 'New York', 40.7128, -74.0060))
+        
+        conn.commit()
+
+    conn.close()
+
+# Insert test data when app starts
+insert_test_data()
+
 # Route to fetch and display traffic data
 @app.route('/traffic-data', methods=['GET'])
 def get_traffic_data():
