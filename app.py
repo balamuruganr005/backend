@@ -181,6 +181,10 @@ def test_db():
         app.logger.error(f"Database test error: {e}")
         return jsonify({"status": "error", "message": str(e)})
 
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({"message": "Welcome to the traffic logger!"})
+
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
     try:
@@ -209,7 +213,6 @@ def get_traffic_data():
     except Exception as e:
         app.logger.error(f"Error in /traffic-data: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
-
 @app.route("/traffic-graph", methods=["GET"])
 def traffic_graph():
     try:
@@ -225,8 +228,18 @@ def traffic_graph():
         if not data:
             return jsonify({"error": "No data available"}), 500
 
-        times = [datetime.utcfromtimestamp(t[0]).strftime("%H:%M:%S") for t in data if isinstance(t[0], (float, int))]
+        times = []
+        for row in data:
+            t = row[0]
+            if isinstance(t, float) or isinstance(t, int):
+                times.append(datetime.utcfromtimestamp(t).strftime("%H:%M:%S"))
+            elif hasattr(t, "strftime"):
+                times.append(t.strftime("%H:%M:%S"))
 
+        if not times:
+            return jsonify({"error": "Invalid timestamps in database"}), 500
+
+        # Plot traffic graph
         plt.figure(figsize=(10, 5))
         plt.step(times, range(len(times)), marker="o", linestyle="-", color="b")
         plt.xlabel("Time")
@@ -234,14 +247,14 @@ def traffic_graph():
         plt.title("Traffic Flow Over Time")
         plt.xticks(rotation=45)
 
+        # Save to a temporary file
         img_path = "/tmp/traffic_graph.png"
         plt.savefig(img_path)
         plt.close()
 
         return send_file(img_path, mimetype="image/png")
     except Exception as e:
-        app.logger.error(f"Error in /traffic-graph: {e}")
-        return jsonify({"error": "Internal Server Error"}), 500
+        return jsonify({"error": f"Failed to generate graph: {str(e)}"}), 500
 
 @app.route("/track", methods=["POST"])
 @limiter.limit("10 per minute")
