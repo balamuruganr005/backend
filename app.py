@@ -82,47 +82,63 @@ def home():
         spike_in_requests = False
         repeated_access = False
         unusual_user_agent = False
-        missing_invalid_headers = False
+        invalid_headers = False
 
-        # Check if the IP exceeded the request rate in the last 60 seconds
-        try:
-            c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s", (ip, timestamp - 60))
-            request_count = c.fetchone()[0]
-
-            if request_count > 100:  # If more than 100 requests in the last minute, flag as high request rate
-                high_request_rate = True
-                status = "malicious"
-                request_size = 1500  # Correcting the request size for malicious IPs as per the rule
-        except Exception as e:
-            print(f"Error checking request rate for IP {ip}: {e}")
-
+        # Checking for malicious or blocked IPs
         if ip in MALICIOUS_IPS:
             status = "malicious"
+            request_size = 1500  # Correcting the request size for malicious IPs as per the rule
         elif ip in BLOCKED_IPS:
             status = "blocked"
 
-        # Additional rules for small/large payload, repeated access, etc.
-        if request_size < 500:
+        # Define detection rules for attackers
+        # High request rate (if the IP has made multiple requests in a short time)
+        c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s", (ip, timestamp - 60))
+        request_count = c.fetchone()[0]
+        if request_count > 5:
+            high_request_rate = True
+
+        # Small payload (example: if the request size is less than 100 bytes)
+        if request_size < 100:
             small_payload = True
-        elif request_size > 1500:
+
+        # Large payload (example: if the request size is greater than 1000 bytes)
+        if request_size > 1000:
             large_payload = True
+
+        # Spike in requests (if there is a sudden burst of requests in a short time)
+        c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s", (ip, timestamp - 10))
+        spike_count = c.fetchone()[0]
+        if spike_count > 3:
+            spike_in_requests = True
+
+        # Repeated access to the same resource (if the same IP requests the same resource repeatedly)
+        c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND request_type = %s", (ip, request_type))
+        repeated_access_count = c.fetchone()[0]
+        if repeated_access_count > 5:
+            repeated_access = True
+
+        # Unusual user agent (example: checking for uncommon user-agent patterns)
+        if "curl" in user_agent or "bot" in user_agent:
+            unusual_user_agent = True
+
+        # Invalid headers (e.g., missing required headers or malformed headers)
+        if "X-Forwarded-For" not in request.headers:
+            invalid_headers = True
 
         location = get_location(ip)
 
-        try:
-            # Insert into PostgreSQL database
-            c.execute("""
-                INSERT INTO traffic_logs (ip, timestamp, request_size, status, location, user_agent, request_type, 
-                                          high_request_rate, small_payload, large_payload, spike_in_requests, 
-                                          repeated_access, unusual_user_agent, missing_invalid_headers)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (ip, timestamp, request_size, status, location, user_agent, request_type, high_request_rate, 
-                  small_payload, large_payload, spike_in_requests, repeated_access, unusual_user_agent, 
-                  missing_invalid_headers))
-            conn.commit()
-        except Exception as e:
-            print(f"Error inserting log for IP {ip}: {e}")
-            conn.rollback()
+        # Insert into PostgreSQL database
+        c.execute("""
+            INSERT INTO traffic_logs 
+            (ip, timestamp, request_size, status, location, user_agent, request_type,
+             high_request_rate, small_payload, large_payload, spike_in_requests,
+             repeated_access, unusual_user_agent, invalid_headers) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (ip, timestamp, request_size, status, location, user_agent, request_type,
+              high_request_rate, small_payload, large_payload, spike_in_requests,
+              repeated_access, unusual_user_agent, invalid_headers))
+        conn.commit()
 
     return jsonify({"message": "Request logged", "ips": ips, "size": request_size})
 
