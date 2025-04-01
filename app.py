@@ -5,9 +5,10 @@ from flask_limiter.util import get_remote_address
 import time
 import matplotlib.pyplot as plt
 import io
-import sqlite3
+import psycopg2
 import numpy as np
 import requests
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -19,14 +20,15 @@ limiter = Limiter(
     default_limits=["500 per minute"]
 )
 
-# Initialize SQLite Database
-conn = sqlite3.connect("traffic_data.db", check_same_thread=False)
+# PostgreSQL connection setup using your Render database connection string
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci')
+conn = psycopg2.connect(DATABASE_URL, sslmode='require')
 c = conn.cursor()
 
 # Create table if not exists
 c.execute("""
     CREATE TABLE IF NOT EXISTS traffic_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         ip TEXT,
         timestamp REAL,
         request_size INTEGER,
@@ -62,7 +64,7 @@ def get_location(ip):
 
 @app.route("/", methods=["GET", "POST"])
 def home():
-    """Logs each request, stores it in SQLite, and returns a success response."""
+    """Logs each request, stores it in PostgreSQL, and returns a success response."""
     timestamp = time.time()
     ips = get_client_ips()
     request_size = len(str(request.data))  # Approximate request size in bytes
@@ -79,18 +81,18 @@ def home():
 
         location = get_location(ip)
 
-        # Insert into SQLite database
+        # Insert into PostgreSQL database
         c.execute("""
             INSERT INTO traffic_logs (ip, timestamp, request_size, status, location, user_agent, request_type) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)""", 
-                  (ip, timestamp, request_size, status, location, user_agent, request_type))
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (ip, timestamp, request_size, status, location, user_agent, request_type))
         conn.commit()
 
     return jsonify({"message": "Request logged", "ips": ips, "size": request_size})
 
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
-    """Retrieve all logged traffic data from SQLite."""
+    """Retrieve all logged traffic data from PostgreSQL."""
     c.execute("SELECT id, ip, timestamp, request_size, status, location, user_agent, request_type FROM traffic_logs")
     data = [{"id": row[0], "ip": row[1], "time": row[2], "size": row[3], "status": row[4], 
              "location": row[5], "user_agent": row[6], "request_type": row[7]} for row in c.fetchall()]
@@ -98,7 +100,7 @@ def get_traffic_data():
 
 @app.route("/traffic-graph", methods=["GET"])
 def traffic_graph():
-    """Generates and returns a graph of traffic over time from SQLite."""
+    """Generates and returns a graph of traffic over time from PostgreSQL."""
     c.execute("SELECT timestamp FROM traffic_logs")
     data = c.fetchall()
 
