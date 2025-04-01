@@ -10,6 +10,8 @@ import numpy as np
 import requests
 import os
 import sqlite3
+import datetime
+
 
 
 app = Flask(__name__)
@@ -77,12 +79,13 @@ def home():
     c = conn.cursor()
 
     ip = request.remote_addr  # Get IP address from request
-    timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')  # Current timestamp
+    timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')  # ✅ Fix: datetime module
+
     request_size = request.content_length if request.content_length else 0  # Get request size
     status = "normal"  # Placeholder (replace with actual logic)
     user_agent = request.headers.get('User-Agent', 'Unknown')  # Get User-Agent header
     request_type = request.method  # GET, POST, etc.
-    
+
     # Traffic behavior analysis (placeholders for now)
     high_request_rate = False  
     small_payload = request_size < 500  
@@ -91,7 +94,7 @@ def home():
     repeated_access = False  
     unusual_user_agent = "bot" in user_agent.lower()  # Simple check for bots
     invalid_headers = False  
-    
+
     # Get location details (handle cases where function returns more than 2 values)
     location_data = get_location(ip)
     if isinstance(location_data, tuple) and len(location_data) == 2:
