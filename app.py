@@ -16,6 +16,28 @@ def get_db_connection():
     except Exception as e:
         print(f"Database Connection Error: {e}")
         return None
+
+def update_timestamp_column():
+    try:
+        conn = get_db_connection()
+        if conn:
+            cur = conn.cursor()
+            # Alter the timestamp column to type REAL (Unix timestamp)
+            cur.execute("""
+                ALTER TABLE traffic_logs
+                ALTER COLUMN timestamp TYPE REAL USING timestamp::REAL;
+            """)
+            conn.commit()
+            cur.close()
+            conn.close()
+            print("Timestamp column updated successfully to REAL type!")
+    except Exception as e:
+        print(f"Error updating timestamp column: {e}")
+
+# Call this function once when the app starts or use it manually
+update_timestamp_column()
+
+
 @app.route("/test-insert", methods=["GET"])
 def test_insert():
     ip = "127.0.0.1"  # Test IP address
