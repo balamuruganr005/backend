@@ -129,16 +129,18 @@ def home():
         location = get_location(ip)
 
         # Insert into PostgreSQL database
-        c.execute("""
+       c.execute("""
             INSERT INTO traffic_logs 
-            (ip, timestamp, request_size, status, location, user_agent, request_type,
-             high_request_rate, small_payload, large_payload, spike_in_requests,
-             repeated_access, unusual_user_agent, invalid_headers) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (ip, timestamp, request_size, status, location, user_agent, request_type,
-              high_request_rate, small_payload, large_payload, spike_in_requests,
-              repeated_access, unusual_user_agent, invalid_headers))
+            (ip, timestamp, request_size, status, location, user_agent, request_type, 
+             high_request_rate, small_payload, large_payload, spike_in_requests, 
+             repeated_access, unusual_user_agent, invalid_headers, destination_port, country, city) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (ip, timestamp, request_size, status, location, user_agent, request_type, 
+              high_request_rate, small_payload, large_payload, spike_in_requests, 
+              repeated_access, unusual_user_agent, invalid_headers, destination_port, country, city))
+
         conn.commit()
+
 
     return jsonify({"message": "Request logged", "ips": ips, "size": request_size})
 
