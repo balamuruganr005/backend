@@ -54,6 +54,35 @@ conn.commit()
 MALICIOUS_IPS = {"45.140.143.77", "185.220.100.255"}
 BLOCKED_IPS = {"81.23.152.244", "222.252.194.204"}
 
+def rate_limiter(ip, trust_score):
+    current_time = time.time()
+
+    # If the user is trusted (score > 0.9), allow instantly
+    if trust_score >= 0.9:
+        user_last_request[ip] = current_time
+        return True  # ✅ Full Priority
+
+    # If the user is suspicious (score 0.5-0.9), introduce delay
+    elif 0.5 <= trust_score < 0.9:
+        if ip in user_last_request and (current_time - user_last_request[ip] < 2):  # Delay 2s
+            return False  # ⚠️ Limited Priority
+        user_last_request[ip] = current_time
+        return True
+
+    # If attacker (score < 0.5), block
+    else:
+        return False  # ❌ No Priority
+
+@app.route("/check_access", methods=["POST"])
+def check_access():
+    data = request.json
+    ip = data.get("ip")
+    trust_score = data.get("trust_score")  # This should come from the DNN
+
+    allowed = rate_limiter(ip, trust_score)
+
+    return jsonify({"ip": ip, "allowed": allowed})
+
 def get_client_ips():
     """
     Extracts all IPs from X-Forwarded-For header.
