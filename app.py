@@ -112,7 +112,6 @@ def update_and_check_schema():
 if __name__ == "__main__":
     update_and_check_schema()
 
-
 def log_traffic(ip, request_size, request_type, destination_port, user_agent):
     global IP_ANOMALY_COUNT, MALICIOUS_IPS
 
@@ -128,6 +127,9 @@ def log_traffic(ip, request_size, request_type, destination_port, user_agent):
     # Fetch geolocation
     country, city, latitude, longitude = get_geolocation(ip)
 
+    print(f"🚀 Logging Traffic: {ip}, {request_size}, {request_type}, {destination_port}, {user_agent}, Status: {status}")
+    print(f"🌍 Location: {country}, {city}, {latitude}, {longitude}")
+
     try:
         conn = get_db_connection()
         if conn:
@@ -139,8 +141,11 @@ def log_traffic(ip, request_size, request_type, destination_port, user_agent):
             conn.commit()
             c.close()
             conn.close()
+            print("✅ Traffic log inserted successfully!")
+        else:
+            print("❌ Database connection failed!")
     except Exception as e:
-        print(f"Error logging traffic: {e}")
+        print(f"❌ Error logging traffic: {e}")
 
 def track_request():
     """
@@ -198,6 +203,16 @@ def home():
     request_size = len(str(request.data))
     insert_traffic_log(ip, request_size, "normal")
     return jsonify({"message": "Request logged", "ip": ip, "size": request_size})
+
+@app.route("/debug-traffic", methods=["GET"])
+def debug_traffic():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM traffic_logs LIMIT 5;")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify(rows)
 
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
