@@ -1,5 +1,5 @@
-from flask import Flask, jsonify
 import sqlite3
+from flask import Flask, jsonify, request
 from datetime import datetime
 
 app = Flask(__name__)
@@ -9,6 +9,32 @@ def get_db_connection():
     conn = sqlite3.connect('traffic_logs.db')
     conn.row_factory = sqlite3.Row
     return conn
+
+# Create the traffic_logs table if it doesn't exist
+def initialize_db():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS traffic_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip TEXT,
+            timestamp TEXT,
+            request_size INTEGER,
+            request_type TEXT,
+            destination_port INTEGER,
+            user_agent TEXT,
+            status TEXT,
+            country TEXT,
+            city TEXT,
+            latitude REAL,
+            longitude REAL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+# Initialize database when the app starts
+initialize_db()
 
 # Route to fetch and display traffic data
 @app.route('/traffic-data', methods=['GET'])
@@ -69,7 +95,6 @@ def insert_traffic_data():
 
     except Exception as e:
         return jsonify({"error": f"Error inserting data: {str(e)}"})
-
 
 if __name__ == '__main__':
     app.run(debug=True)
