@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import io
 import sqlite3
 import numpy as np
+import requests
 
 app = Flask(__name__)
 CORS(app)
@@ -29,7 +30,10 @@ c.execute("""
         ip TEXT,
         timestamp REAL,
         request_size INTEGER,
-        status TEXT
+        status TEXT,
+        location TEXT,
+        user_agent TEXT,
+        request_type TEXT
     )
 """)
 conn.commit()
@@ -48,23 +52,38 @@ def get_client_ips():
         return [ip.strip() for ip in forwarded.split(",")]  # Return list of IPs
     return [request.remote_addr]  # Single IP in list format
 
+def get_location(ip):
+    """Returns location based on IP address using a free API."""
+    try:
+        response = requests.get(f"http://ip-api.com/json/{ip}").json()
+        return response.get("country", "unknown")
+    except requests.RequestException:
+        return "unknown"
+
 @app.route("/", methods=["GET", "POST"])
 def home():
     """Logs each request, stores it in SQLite, and returns a success response."""
     timestamp = time.time()
     ips = get_client_ips()
     request_size = len(str(request.data))  # Approximate request size in bytes
+    user_agent = request.headers.get("User-Agent", "unknown")
+    request_type = request.method
 
     for ip in ips:
         status = "normal"
         if ip in MALICIOUS_IPS:
             status = "malicious"
+            request_size = 1500  # Correcting the request size for malicious IPs as per the rule
         elif ip in BLOCKED_IPS:
             status = "blocked"
 
+        location = get_location(ip)
+
         # Insert into SQLite database
-        c.execute("INSERT INTO traffic_logs (ip, timestamp, request_size, status) VALUES (?, ?, ?, ?)", 
-                  (ip, timestamp, request_size, status))
+        c.execute("""
+            INSERT INTO traffic_logs (ip, timestamp, request_size, status, location, user_agent, request_type) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)""", 
+                  (ip, timestamp, request_size, status, location, user_agent, request_type))
         conn.commit()
 
     return jsonify({"message": "Request logged", "ips": ips, "size": request_size})
@@ -72,8 +91,9 @@ def home():
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
     """Retrieve all logged traffic data from SQLite."""
-    c.execute("SELECT id, ip, timestamp, request_size, status FROM traffic_logs")
-    data = [{"id": row[0], "ip": row[1], "time": row[2], "size": row[3], "status": row[4]} for row in c.fetchall()]
+    c.execute("SELECT id, ip, timestamp, request_size, status, location, user_agent, request_type FROM traffic_logs")
+    data = [{"id": row[0], "ip": row[1], "time": row[2], "size": row[3], "status": row[4], 
+             "location": row[5], "user_agent": row[6], "request_type": row[7]} for row in c.fetchall()]
     return jsonify({"traffic_logs": data})
 
 @app.route("/traffic-graph", methods=["GET"])
@@ -104,12 +124,31 @@ def traffic_graph():
 
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
-    anomalies_by_ip, repeating_ips = detect_anomalies()
+    """Detects unusual spikes in request rate and groups anomalies by IP"""
+    c.execute("SELECT ip, timestamp FROM traffic_logs")
+    records = c.fetchall()
+
+    if len(records) < 5:  # Not enough data for anomaly detection
+        return jsonify({"message": "Not enough data for anomaly detection"})
+
+    ip_data = {}  # Group requests by IP
+    for ip, timestamp in records:
+        if ip not in ip_data:
+            ip_data[ip] = []
+        ip_data[ip].append(timestamp)
+
+    anomalies_by_ip = {}
+    for ip, timestamps in ip_data.items():
+        if len(timestamps) >= 3:  # Rule: IP repeated 3 or more times is suspicious
+            anomalies_by_ip[ip] = "Repeated IP detected"
+
+    # Add all malicious IPs to anomalies
+    for ip in MALICIOUS_IPS:
+        anomalies_by_ip[ip] = "Malicious IP detected"
+
     return jsonify({
         "anomalies_by_ip": anomalies_by_ip,
-        "repeating_ips": repeating_ips,
-        "total_ips_with_anomalies": len(anomalies_by_ip),
-        "total_repeating_ips": len(repeating_ips)
+        "total_ips_with_anomalies": len(anomalies_by_ip)
     })
 
 if __name__ == "__main__":
