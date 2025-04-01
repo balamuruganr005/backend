@@ -81,13 +81,44 @@ def home():
     user_agent = request.headers.get("User-Agent", "unknown")
     request_type = request.method
 
-    for ip in ips:
-        status = "normal"
+     for ip in ips:
+        status = "normal"  # Default status
+        
+        # Rule 1: Check for small request size
+        if request_size < 50:  # Threshold for suspiciously small requests
+            status = "suspicious"  # Flag small requests as suspicious
+        # Rule 2: Check for large request size (could indicate a DDoS or resource request)
+        elif request_size > 5000:  # Arbitrary large size threshold (can be adjusted)
+            status = "suspicious"  # Flag large requests as suspicious
+            
+        # Rule 3: Check for repeated requests from the same IP (could indicate scanning or brute-force attempts)
+        # This requires analyzing request frequency over time
+        c.execute("""
+            SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s
+        """, (ip, time.time() - 60))  # Check for requests from the last 60 seconds
+        request_count = c.fetchone()[0]
+        if request_count > 50:  # Arbitrary threshold for repeated requests (adjust as needed)
+            status = "suspicious"
+        
+        # Rule 4: Known malicious IPs
         if ip in MALICIOUS_IPS:
             status = "malicious"
-            request_size = 1500  # Correcting the request size for malicious IPs as per the rule
+            request_size = 1500  # Correcting the request size for malicious IPs
+        # Rule 5: Blocked IPs
         elif ip in BLOCKED_IPS:
             status = "blocked"
+
+        # Rule 6: Unusual user agent strings (could be part of an attack attempt)
+        if "bot" in user_agent.lower() or "crawl" in user_agent.lower():
+            status = "suspicious"  # Flag bots or crawlers as suspicious
+
+        # Rule 7: Extremely high request rate in a short period (could indicate DDoS)
+        c.execute("""
+            SELECT COUNT(*) FROM traffic_logs WHERE timestamp > %s
+        """, (time.time() - 5))  # Check the request rate in the last 5 seconds
+        recent_requests = c.fetchone()[0]
+        if recent_requests > 100:  # Arbitrary threshold for rapid request bursts (adjust as needed)
+            status = "malicious"  # Flag rapid request bursts as malicious
 
         location, city = get_location(ip)
         # Traffic behavior analysis
