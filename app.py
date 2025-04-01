@@ -58,85 +58,63 @@ def get_client_ips():
     return [request.remote_addr]  # Single IP in list format
 
 def get_location(ip):
-    """Returns location based on IP address using a free API."""
     try:
-        response = requests.get(f"http://ip-api.com/json/{ip}").json()
-        return response.get("country", "unknown")
-    except requests.RequestException:
-        return "unknown"
+        # Simulating an API response
+        response = {
+            "country": "USA",
+            "city": "New York"
+        }
+        return response.get("country", "Unknown"), response.get("city", "Unknown")
+    except Exception:
+        return "Unknown", "Unknown"
 
-@app.route("/", methods=["GET", "POST"])
+
+@app.route('/')
 def home():
-    """Logs each request, stores it in PostgreSQL, and returns a success response."""
-    timestamp = time.time()
-    ips = get_client_ips()
-    request_size = len(str(request.data))  # Approximate request size in bytes
-    user_agent = request.headers.get("User-Agent", "unknown")
-    request_type = request.method
+    conn = sqlite3.connect('traffic.db')  # Connect to SQLite database
+    c = conn.cursor()
 
-    for ip in ips:
-        status = "normal"
-        high_request_rate = False
-        small_payload = False
-        large_payload = False
-        spike_in_requests = False
-        repeated_access = False
-        unusual_user_agent = False
-        invalid_headers = False
+    ip = request.remote_addr  # Get IP address from request
+    timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')  # Current timestamp
+    request_size = request.content_length if request.content_length else 0  # Get request size
+    status = "normal"  # Placeholder (replace with actual logic)
+    user_agent = request.headers.get('User-Agent', 'Unknown')  # Get User-Agent header
+    request_type = request.method  # GET, POST, etc.
+    
+    # Traffic behavior analysis (placeholders for now)
+    high_request_rate = False  
+    small_payload = request_size < 500  
+    large_payload = request_size > 10000  
+    spike_in_requests = False  
+    repeated_access = False  
+    unusual_user_agent = "bot" in user_agent.lower()  # Simple check for bots
+    invalid_headers = False  
+    
+    # Get location details (handle cases where function returns more than 2 values)
+    location_data = get_location(ip)
+    if isinstance(location_data, tuple) and len(location_data) == 2:
+        country, city = location_data
+    else:
+        country, city = "Unknown", "Unknown"  
 
-        # Checking for malicious or blocked IPs
-        if ip in MALICIOUS_IPS:
-            status = "malicious"
-            request_size = 1500  # Correcting the request size for malicious IPs as per the rule
-        elif ip in BLOCKED_IPS:
-            status = "blocked"
+    # Get destination port (Render might not provide this reliably)
+    destination_port = request.environ.get('REMOTE_PORT', 'Unknown')
 
-        # Define detection rules for attackers
-        c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s", (ip, timestamp - 60))
-        request_count = c.fetchone()[0]
-        if request_count > 5:
-            high_request_rate = True
+    # Insert into SQLite database
+    c.execute("""
+        INSERT INTO traffic_logs 
+        (ip, timestamp, request_size, status, user_agent, request_type, 
+         high_request_rate, small_payload, large_payload, spike_in_requests, 
+         repeated_access, unusual_user_agent, invalid_headers, destination_port, country, city) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (ip, timestamp, request_size, status, user_agent, request_type, 
+          high_request_rate, small_payload, large_payload, spike_in_requests, 
+          repeated_access, unusual_user_agent, invalid_headers, destination_port, country, city))
 
-        if request_size < 100:
-            small_payload = True
+    conn.commit()
+    conn.close()
 
-        if request_size > 1000:
-            large_payload = True
-
-        c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s", (ip, timestamp - 10))
-        spike_count = c.fetchone()[0]
-        if spike_count > 3:
-            spike_in_requests = True
-
-        c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND request_type = %s", (ip, request_type))
-        repeated_access_count = c.fetchone()[0]
-        if repeated_access_count > 5:
-            repeated_access = True
-
-        if "curl" in user_agent or "bot" in user_agent:
-            unusual_user_agent = True
-
-        if "X-Forwarded-For" not in request.headers:
-            invalid_headers = True
-
-        destination_port = request.environ.get('REMOTE_PORT', 'unknown')  # Extracting destination port
-        country, city = get_location(ip)  # Ensure these values are assigned correctly
-
-        # Insert into PostgreSQL database (Fixed Indentation)
-        c.execute("""
-            INSERT INTO traffic_logs 
-            (ip, timestamp, request_size, status, location, user_agent, request_type, 
-             high_request_rate, small_payload, large_payload, spike_in_requests, 
-             repeated_access, unusual_user_agent, invalid_headers, destination_port, country, city) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (ip, timestamp, request_size, status, location, user_agent, request_type, 
-              high_request_rate, small_payload, large_payload, spike_in_requests, 
-              repeated_access, unusual_user_agent, invalid_headers, destination_port, country, city))
-
-        conn.commit()
-
-    return jsonify({"message": "Request logged", "ips": ips, "size": request_size})
-
+    return jsonify({"message": "Traffic data logged successfully"}), 200
 
 
 @app.route("/traffic-data", methods=["GET"])
