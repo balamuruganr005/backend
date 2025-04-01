@@ -104,43 +104,12 @@ def traffic_graph():
 
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
-    """Detects unusual spikes in request rate and groups anomalies by IP"""
-    c.execute("SELECT ip, timestamp FROM traffic_logs")
-    records = c.fetchall()
-
-    if len(records) < 5:  # Not enough data for anomaly detection
-        return jsonify({"message": "Not enough data for anomaly detection"})
-
-    ip_data = {}  # Group requests by IP
-    for ip, timestamp in records:
-        if ip not in ip_data:
-            ip_data[ip] = []
-        ip_data[ip].append(timestamp)
-
-    anomalies_by_ip = {}
-
-    for ip, timestamps in ip_data.items():
-        timestamps = sorted(timestamps)
-        intervals = np.diff(timestamps)
-
-        if len(intervals) < 1:
-            continue
-
-        mean_interval = np.mean(intervals)
-        std_interval = np.std(intervals)
-
-        if std_interval == 0:
-            continue  
-
-        threshold = mean_interval - (1.5 * std_interval)
-        anomalies = [timestamps[i] for i in range(1, len(timestamps)) if intervals[i - 1] < threshold]
-
-        if anomalies:
-            anomalies_by_ip[ip] = anomalies
-
+    anomalies_by_ip, repeating_ips = detect_anomalies()
     return jsonify({
         "anomalies_by_ip": anomalies_by_ip,
-        "total_ips_with_anomalies": len(anomalies_by_ip)
+        "repeating_ips": repeating_ips,
+        "total_ips_with_anomalies": len(anomalies_by_ip),
+        "total_repeating_ips": len(repeating_ips)
     })
 
 if __name__ == "__main__":
