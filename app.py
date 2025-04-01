@@ -9,6 +9,8 @@ import psycopg2
 import numpy as np
 import requests
 import os
+import sqlite3
+
 
 app = Flask(__name__)
 CORS(app)
@@ -69,7 +71,7 @@ def get_location(ip):
         return "Unknown", "Unknown"
 
 
-@app.route('/')
+@app.route("/", methods=["GET", "POST"])
 def home():
     conn = sqlite3.connect('traffic.db')  # Connect to SQLite database
     c = conn.cursor()
@@ -115,7 +117,6 @@ def home():
     conn.close()
 
     return jsonify({"message": "Traffic data logged successfully"}), 200
-
 
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
