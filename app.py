@@ -9,10 +9,6 @@ import psycopg2
 import numpy as np
 import requests
 import os
-import sqlite3
-import datetime
-
-
 
 app = Flask(__name__)
 CORS(app)
@@ -29,7 +25,7 @@ DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://traffic_db_6kci_user:bTXP
 conn = psycopg2.connect(DATABASE_URL, sslmode='require')
 c = conn.cursor()
 
-# Create table if not exists
+# Create table if not exists (updated to match all 18 columns)
 c.execute("""
     CREATE TABLE IF NOT EXISTS traffic_logs (
         id SERIAL PRIMARY KEY,
@@ -45,7 +41,11 @@ c.execute("""
         large_payload BOOLEAN,
         spike_in_requests BOOLEAN,
         repeated_access BOOLEAN,
-        unusual_user_agent BOOLEAN
+        unusual_user_agent BOOLEAN,
+        invalid_headers BOOLEAN,
+        destination_port TEXT,
+        country TEXT,
+        city TEXT
     )
 """)
 conn.commit()
@@ -55,114 +55,82 @@ MALICIOUS_IPS = {"45.140.143.77", "185.220.100.255"}
 BLOCKED_IPS = {"81.23.152.244", "222.252.194.204"}
 
 def get_client_ips():
-    """Extracts all IPs from X-Forwarded-For header."""
+    """
+    Extracts all IPs from X-Forwarded-For header.
+    If no header, fallback to remote_addr.
+    """
     forwarded = request.headers.get("X-Forwarded-For", None)
     if forwarded:
-        return [ip.strip() for ip in forwarded.split(",")]
+        return [ip.strip() for ip in forwarded.split(",")]  # Return list of IPs
     return [request.remote_addr]  # Single IP in list format
 
 def get_location(ip):
+    """Returns location based on IP address using a free API."""
     try:
-        # Simulating an API response
-        response = {
-            "country": "USA",
-            "city": "New York"
-        }
-        return response.get("country", "Unknown"), response.get("city", "Unknown")
-    except Exception:
-        return "Unknown", "Unknown"
-
+        response = requests.get(f"http://ip-api.com/json/{ip}").json()
+        return response.get("country", "unknown"), response.get("city", "unknown")
+    except requests.RequestException:
+        return "unknown", "unknown"
 
 @app.route("/", methods=["GET", "POST"])
 def home():
-    conn = sqlite3.connect('traffic.db')  # Connect to SQLite database
-    c = conn.cursor()
+    """Logs each request, stores it in PostgreSQL, and returns a success response."""
+    timestamp = time.time()
+    ips = get_client_ips()
+    request_size = len(str(request.data))  # Approximate request size in bytes
+    user_agent = request.headers.get("User-Agent", "unknown")
+    request_type = request.method
 
-    ip = request.remote_addr  # Get IP address from request
-    timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')  # ✅ Fix: datetime module
+    for ip in ips:
+        status = "normal"
+        if ip in MALICIOUS_IPS:
+            status = "malicious"
+            request_size = 1500  # Correcting the request size for malicious IPs as per the rule
+        elif ip in BLOCKED_IPS:
+            status = "blocked"
 
-    request_size = request.content_length if request.content_length else 0  # Get request size
-    status = "normal"  # Placeholder (replace with actual logic)
-    user_agent = request.headers.get('User-Agent', 'Unknown')  # Get User-Agent header
-    request_type = request.method  # GET, POST, etc.
+        location, city = get_location(ip)
+        # Traffic behavior analysis
+        high_request_rate = False  # Placeholder for actual logic
+        small_payload = request_size < 500  # Example logic
+        large_payload = request_size > 10000  # Example logic
+        spike_in_requests = False  # Placeholder for actual logic
+        repeated_access = False  # Placeholder for actual logic
+        unusual_user_agent = "bot" in user_agent.lower()  # Simple check for bots
+        invalid_headers = False  # Placeholder for actual logic
+        destination_port = request.environ.get('REMOTE_PORT', 'Unknown')  # Get destination port
 
-    # Traffic behavior analysis (placeholders for now)
-    high_request_rate = False  
-    small_payload = request_size < 500  
-    large_payload = request_size > 10000  
-    spike_in_requests = False  
-    repeated_access = False  
-    unusual_user_agent = "bot" in user_agent.lower()  # Simple check for bots
-    invalid_headers = False  
+        # Insert into PostgreSQL database
+        c.execute("""
+            INSERT INTO traffic_logs 
+            (ip, timestamp, request_size, status, location, user_agent, request_type, 
+            high_request_rate, small_payload, large_payload, spike_in_requests, 
+            repeated_access, unusual_user_agent, invalid_headers, destination_port, country, city) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (ip, timestamp, request_size, status, location, user_agent, request_type, 
+              high_request_rate, small_payload, large_payload, spike_in_requests, 
+              repeated_access, unusual_user_agent, invalid_headers, destination_port, 
+              "unknown", city))
+        conn.commit()
 
-    # Get location details (handle cases where function returns more than 2 values)
-    location_data = get_location(ip)
-    if isinstance(location_data, tuple) and len(location_data) == 2:
-        country, city = location_data
-    else:
-        country, city = "Unknown", "Unknown"  
-
-    # Get destination port (Render might not provide this reliably)
-    destination_port = request.environ.get('REMOTE_PORT', 'Unknown')
-
-    # Insert into SQLite database
-    c.execute("""
-        INSERT INTO traffic_logs 
-        (ip, timestamp, request_size, status, user_agent, request_type, 
-         high_request_rate, small_payload, large_payload, spike_in_requests, 
-         repeated_access, unusual_user_agent, invalid_headers, destination_port, country, city) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (ip, timestamp, request_size, status, user_agent, request_type, 
-          high_request_rate, small_payload, large_payload, spike_in_requests, 
-          repeated_access, unusual_user_agent, invalid_headers, destination_port, country, city))
-
-    conn.commit()
-    conn.close()
-
-    return jsonify({"message": "Traffic data logged successfully"}), 200
+    return jsonify({"message": "Request logged", "ips": ips, "size": request_size})
 
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
-    """Retrieve all logged traffic data from PostgreSQL, including new detection factors."""
+    """Retrieve all logged traffic data from PostgreSQL."""
     c.execute("""
-        SELECT 
-            id, 
-            ip, 
-            timestamp, 
-            request_size, 
-            status, 
-            location, 
-            user_agent, 
-            request_type,
-            high_request_rate,
-            small_payload,
-            large_payload,
-            spike_in_requests,
-            repeated_access,
-            unusual_user_agent,
-            missing_invalid_headers
+        SELECT id, ip, timestamp, request_size, status, location, user_agent, 
+        request_type, high_request_rate, small_payload, large_payload, spike_in_requests, 
+        repeated_access, unusual_user_agent, invalid_headers, destination_port, country, city 
         FROM traffic_logs
     """)
-    data = [{
-        "id": row[0],
-        "ip": row[1],
-        "time": row[2],
-        "size": row[3],
-        "status": row[4],
-        "location": row[5],
-        "user_agent": row[6],
-        "request_type": row[7],
-        "high_request_rate": row[8],
-        "small_payload": row[9],
-        "large_payload": row[10],
-        "spike_in_requests": row[11],
-        "repeated_access": row[12],
-        "unusual_user_agent": row[13],
-        "missing_invalid_headers": row[14]
-    } for row in c.fetchall()]
-
+    data = [{"id": row[0], "ip": row[1], "time": row[2], "size": row[3], "status": row[4], 
+             "location": row[5], "user_agent": row[6], "request_type": row[7], 
+             "high_request_rate": row[8], "small_payload": row[9], "large_payload": row[10], 
+             "spike_in_requests": row[11], "repeated_access": row[12], "unusual_user_agent": row[13], 
+             "invalid_headers": row[14], "destination_port": row[15], "country": row[16], "city": row[17]} 
+            for row in c.fetchall()]
     return jsonify({"traffic_logs": data})
-
 
 @app.route("/traffic-graph", methods=["GET"])
 def traffic_graph():
