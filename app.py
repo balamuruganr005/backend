@@ -92,41 +92,35 @@ def home():
             status = "blocked"
 
         # Define detection rules for attackers
-        # High request rate (if the IP has made multiple requests in a short time)
         c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s", (ip, timestamp - 60))
         request_count = c.fetchone()[0]
         if request_count > 5:
             high_request_rate = True
 
-        # Small payload (example: if the request size is less than 100 bytes)
         if request_size < 100:
             small_payload = True
 
-        # Large payload (example: if the request size is greater than 1000 bytes)
         if request_size > 1000:
             large_payload = True
 
-        # Spike in requests (if there is a sudden burst of requests in a short time)
         c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s", (ip, timestamp - 10))
         spike_count = c.fetchone()[0]
         if spike_count > 3:
             spike_in_requests = True
 
-        # Repeated access to the same resource (if the same IP requests the same resource repeatedly)
         c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND request_type = %s", (ip, request_type))
         repeated_access_count = c.fetchone()[0]
         if repeated_access_count > 5:
             repeated_access = True
 
-        # Unusual user agent (example: checking for uncommon user-agent patterns)
         if "curl" in user_agent or "bot" in user_agent:
             unusual_user_agent = True
 
-        # Invalid headers (e.g., missing required headers or malformed headers)
         if "X-Forwarded-For" not in request.headers:
             invalid_headers = True
 
-        location = get_location(ip)
+        destination_port = request.environ.get('REMOTE_PORT', 'unknown')  # Extracting destination port
+        country, city = get_location(ip)  # Ensure these values are assigned correctly
 
         # Insert into PostgreSQL database (Fixed Indentation)
         c.execute("""
@@ -142,6 +136,7 @@ def home():
         conn.commit()
 
     return jsonify({"message": "Request logged", "ips": ips, "size": request_size})
+
 
 
 @app.route("/traffic-data", methods=["GET"])
