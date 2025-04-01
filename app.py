@@ -89,19 +89,28 @@ def get_traffic_data():
     return jsonify(data)
 
 # Route to insert traffic data
+from flask import request
+import requests
+
 @app.route('/insert-traffic-data', methods=['POST'])
 def insert_traffic_data():
     try:
-        ip = '127.0.0.1'
-        request_size = 1234
-        request_type = 'GET'
-        destination_port = 80
-        user_agent = 'Mozilla/5.0'
-        status = 'normal'
-        country = 'USA'
-        city = 'New York'
-        latitude = 40.7128
-        longitude = -74.0060
+        # Get client IP address
+        ip = request.remote_addr
+
+        # Get geolocation (optional)
+        location_data = requests.get(f"https://ipapi.co/{ip}/json/").json()
+        country = location_data.get("country_name", "Unknown")
+        city = location_data.get("city", "Unknown")
+        latitude = location_data.get("latitude", 0.0)
+        longitude = location_data.get("longitude", 0.0)
+
+        # Default values
+        request_size = 512
+        request_type = "GET"
+        destination_port = 443
+        user_agent = request.headers.get("User-Agent", "Unknown")
+        status = "normal"
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         conn = get_db_connection()
@@ -114,7 +123,7 @@ def insert_traffic_data():
         conn.commit()
         conn.close()
 
-        return jsonify({"message": "Data inserted successfully!"})
+        return jsonify({"message": "Visitor data inserted successfully!"})
 
     except Exception as e:
         return jsonify({"error": f"Error inserting data: {str(e)}"})
