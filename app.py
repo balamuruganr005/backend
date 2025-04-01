@@ -35,7 +35,13 @@ c.execute("""
         status TEXT,
         location TEXT,
         user_agent TEXT,
-        request_type TEXT
+        request_type TEXT,
+        high_request_rate BOOLEAN,
+        small_payload BOOLEAN,
+        large_payload BOOLEAN,
+        spike_in_requests BOOLEAN,
+        repeated_access BOOLEAN,
+        unusual_user_agent BOOLEAN
     )
 """)
 conn.commit()
@@ -45,13 +51,10 @@ MALICIOUS_IPS = {"45.140.143.77", "185.220.100.255"}
 BLOCKED_IPS = {"81.23.152.244", "222.252.194.204"}
 
 def get_client_ips():
-    """
-    Extracts all IPs from X-Forwarded-For header.
-    If no header, fallback to remote_addr.
-    """
+    """Extracts all IPs from X-Forwarded-For header."""
     forwarded = request.headers.get("X-Forwarded-For", None)
     if forwarded:
-        return [ip.strip() for ip in forwarded.split(",")]  # Return list of IPs
+        return [ip.strip() for ip in forwarded.split(",")]
     return [request.remote_addr]  # Single IP in list format
 
 def get_location(ip):
@@ -73,19 +76,58 @@ def home():
 
     for ip in ips:
         status = "normal"
+        high_request_rate = False
+        small_payload = False
+        large_payload = False
+        spike_in_requests = False
+        repeated_access = False
+        unusual_user_agent = False
+
         if ip in MALICIOUS_IPS:
             status = "malicious"
             request_size = 1500  # Correcting the request size for malicious IPs as per the rule
         elif ip in BLOCKED_IPS:
             status = "blocked"
 
+        # High Request Rate: too many requests in a short period
+        c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s", (ip, timestamp - 60))
+        count_last_minute = c.fetchone()[0]
+        if count_last_minute > 100:
+            high_request_rate = True
+
+        # Small Payload: request size less than 10 bytes
+        if request_size < 10:
+            small_payload = True
+
+        # Large Payload: request size greater than a certain limit
+        if request_size > 1500:
+            large_payload = True
+
+        # Spike in Requests: More than a certain number of requests within a very short period (e.g., 10 requests within 5 seconds)
+        c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s", (ip, timestamp - 5))
+        count_last_5_seconds = c.fetchone()[0]
+        if count_last_5_seconds > 10:
+            spike_in_requests = True
+
+        # Repeated Access: Same IP requesting the same resource too frequently
+        c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND request_type = %s AND timestamp > %s", (ip, request_type, timestamp - 60))
+        count_same_resource = c.fetchone()[0]
+        if count_same_resource > 5:
+            repeated_access = True
+
+        # Unusual User-Agent: e.g., "Go-http-client" or similar bots
+        if "Go-http-client" in user_agent:
+            unusual_user_agent = True
+
         location = get_location(ip)
 
         # Insert into PostgreSQL database
         c.execute("""
-            INSERT INTO traffic_logs (ip, timestamp, request_size, status, location, user_agent, request_type) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (ip, timestamp, request_size, status, location, user_agent, request_type))
+            INSERT INTO traffic_logs (ip, timestamp, request_size, status, location, user_agent, request_type, 
+            high_request_rate, small_payload, large_payload, spike_in_requests, repeated_access, unusual_user_agent) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (ip, timestamp, request_size, status, location, user_agent, request_type, 
+              high_request_rate, small_payload, large_payload, spike_in_requests, repeated_access, unusual_user_agent))
         conn.commit()
 
     return jsonify({"message": "Request logged", "ips": ips, "size": request_size})
