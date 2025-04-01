@@ -1,116 +1,75 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 import sqlite3
 from datetime import datetime
 
 app = Flask(__name__)
 
-# Function to connect to the SQLite database
+# Create a connection to the SQLite database
 def get_db_connection():
-    conn = sqlite3.connect('traffic_logs.db')  # Creates a local SQLite database file
+    conn = sqlite3.connect('traffic_logs.db')
+    conn.row_factory = sqlite3.Row
     return conn
 
-# Create table if it doesn't exist
-def create_table():
+# Route to fetch and display traffic data
+@app.route('/traffic-data', methods=['GET'])
+def get_traffic_data():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM traffic_logs;")
+    traffic_data = c.fetchall()
+    conn.close()
+    
+    # Convert data to JSON format
+    data = []
+    for row in traffic_data:
+        data.append({
+            "id": row["id"],
+            "ip": row["ip"],
+            "timestamp": row["timestamp"],
+            "request_size": row["request_size"],
+            "request_type": row["request_type"],
+            "destination_port": row["destination_port"],
+            "user_agent": row["user_agent"],
+            "status": row["status"],
+            "country": row["country"],
+            "city": row["city"],
+            "latitude": row["latitude"],
+            "longitude": row["longitude"]
+        })
+    
+    return jsonify(data)
+
+# Route to insert traffic data
+@app.route('/insert-traffic-data', methods=['POST'])
+def insert_traffic_data():
     try:
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS traffic_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ip TEXT,
-                timestamp TEXT,
-                request_size INTEGER,
-                request_type TEXT,
-                destination_port INTEGER,
-                user_agent TEXT,
-                status TEXT,
-                country TEXT,
-                city TEXT,
-                latitude REAL,
-                longitude REAL
-            )
-        """)
-        conn.commit()
-        conn.close()
-        print("✅ Table created or already exists.")
-    except Exception as e:
-        print(f"❌ Error creating table: {e}")
+        ip = '127.0.0.1'
+        request_size = 1234
+        request_type = 'GET'
+        destination_port = 80
+        user_agent = 'Mozilla/5.0'
+        status = 'normal'
+        country = 'USA'
+        city = 'New York'
+        latitude = 40.7128
+        longitude = -74.0060
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-# Run this once when the app starts
-create_table()
-
-# Function to log traffic data
-def log_traffic(ip, request_size, request_type, destination_port, user_agent):
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    status = "normal"  # Adjust status based on your logic
-
-    # Example: Hardcoded geolocation data (replace with real logic if needed)
-    country, city, latitude, longitude = "Country", "City", 0.0, 0.0
-
-    try:
         conn = get_db_connection()
         c = conn.cursor()
         c.execute("""
             INSERT INTO traffic_logs (ip, timestamp, request_size, request_type, destination_port, user_agent, status, country, city, latitude, longitude)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (ip, timestamp, request_size, request_type, destination_port, user_agent, status, country, city, latitude, longitude))
+
         conn.commit()
         conn.close()
-        print(f"✅ Logged traffic data for IP: {ip}")
+
+        return jsonify({"message": "Data inserted successfully!"})
+
     except Exception as e:
-        print(f"❌ Error logging traffic: {e}")
+        return jsonify({"error": f"Error inserting data: {str(e)}"})
 
-# Route to log traffic data
-@app.route("/track", methods=["POST"])
-def track_traffic():
-    data = request.get_json()
 
-    # Extracting data from the request body
-    ip = data.get("ip")
-    request_size = data.get("request_size")
-    request_type = data.get("request_type")
-    destination_port = data.get("destination_port")
-    user_agent = data.get("user_agent")
-
-    if not all([ip, request_size, request_type, destination_port, user_agent]):
-        return jsonify({"error": "Missing required fields"}), 400
-
-    # Log the traffic data
-    log_traffic(ip, request_size, request_type, destination_port, user_agent)
-
-    return jsonify({"message": "Traffic logged successfully"}), 201
-
-# Route to get the traffic data
-@app.route("/traffic-data", methods=["GET"])
-def get_traffic_data():
-    try:
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("SELECT * FROM traffic_logs ORDER BY timestamp DESC LIMIT 100")
-        data = c.fetchall()
-        conn.close()
-
-        traffic_logs = []
-        for row in data:
-            traffic_logs.append({
-                "id": row[0],
-                "ip": row[1],
-                "timestamp": row[2],
-                "request_size": row[3],
-                "request_type": row[4],
-                "destination_port": row[5],
-                "user_agent": row[6],
-                "status": row[7],
-                "country": row[8],
-                "city": row[9],
-                "latitude": row[10],
-                "longitude": row[11],
-            })
-
-        return jsonify({"traffic_logs": traffic_logs}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# Run the app
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)
