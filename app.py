@@ -144,7 +144,7 @@ def home():
         # Rule 7: Extremely high request rate in a short period (could indicate DDoS)
         c.execute("""
             SELECT COUNT(*) FROM traffic_logs WHERE timestamp > %s
-        """, (time.time() - 5))  # Check the request rate in the last 5 seconds
+        """, (time.time() - 5,))  # Check the request rate in the last 5 seconds
         recent_requests = c.fetchone()[0]
         if recent_requests > 100:  # Arbitrary threshold for rapid request bursts (adjust as needed)
             status = "malicious"  # Flag rapid request bursts as malicious
