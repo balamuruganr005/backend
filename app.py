@@ -76,45 +76,99 @@ def home():
 
     for ip in ips:
         status = "normal"
+        high_request_rate = False
+        small_payload = False
+        large_payload = False
+        spike_in_requests = False
+        repeated_access = False
+        unusual_user_agent = False
+        missing_invalid_headers = False
+
+        # Check if the IP exceeded the request rate in the last 60 seconds
         try:
-            # Check if the IP exceeded the request rate in the last 60 seconds
             c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s", (ip, timestamp - 60))
             request_count = c.fetchone()[0]
 
             if request_count > 100:  # If more than 100 requests in the last minute, flag as high request rate
+                high_request_rate = True
                 status = "malicious"
                 request_size = 1500  # Correcting the request size for malicious IPs as per the rule
         except Exception as e:
             print(f"Error checking request rate for IP {ip}: {e}")
-            continue  # Skip the IP and continue processing others
 
         if ip in MALICIOUS_IPS:
             status = "malicious"
         elif ip in BLOCKED_IPS:
             status = "blocked"
 
+        # Additional rules for small/large payload, repeated access, etc.
+        if request_size < 500:
+            small_payload = True
+        elif request_size > 1500:
+            large_payload = True
+
         location = get_location(ip)
 
         try:
             # Insert into PostgreSQL database
             c.execute("""
-                INSERT INTO traffic_logs (ip, timestamp, request_size, status, location, user_agent, request_type) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (ip, timestamp, request_size, status, location, user_agent, request_type))
+                INSERT INTO traffic_logs (ip, timestamp, request_size, status, location, user_agent, request_type, 
+                                          high_request_rate, small_payload, large_payload, spike_in_requests, 
+                                          repeated_access, unusual_user_agent, missing_invalid_headers)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (ip, timestamp, request_size, status, location, user_agent, request_type, high_request_rate, 
+                  small_payload, large_payload, spike_in_requests, repeated_access, unusual_user_agent, 
+                  missing_invalid_headers))
             conn.commit()
         except Exception as e:
             print(f"Error inserting log for IP {ip}: {e}")
-            conn.rollback()  # Rollback the transaction to prevent inconsistent state
+            conn.rollback()
 
     return jsonify({"message": "Request logged", "ips": ips, "size": request_size})
 
+
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
-    """Retrieve all logged traffic data from PostgreSQL."""
-    c.execute("SELECT id, ip, timestamp, request_size, status, location, user_agent, request_type FROM traffic_logs")
-    data = [{"id": row[0], "ip": row[1], "time": row[2], "size": row[3], "status": row[4], 
-             "location": row[5], "user_agent": row[6], "request_type": row[7]} for row in c.fetchall()]
+    """Retrieve all logged traffic data from PostgreSQL, including new detection factors."""
+    c.execute("""
+        SELECT 
+            id, 
+            ip, 
+            timestamp, 
+            request_size, 
+            status, 
+            location, 
+            user_agent, 
+            request_type,
+            high_request_rate,
+            small_payload,
+            large_payload,
+            spike_in_requests,
+            repeated_access,
+            unusual_user_agent,
+            missing_invalid_headers
+        FROM traffic_logs
+    """)
+    data = [{
+        "id": row[0],
+        "ip": row[1],
+        "time": row[2],
+        "size": row[3],
+        "status": row[4],
+        "location": row[5],
+        "user_agent": row[6],
+        "request_type": row[7],
+        "high_request_rate": row[8],
+        "small_payload": row[9],
+        "large_payload": row[10],
+        "spike_in_requests": row[11],
+        "repeated_access": row[12],
+        "unusual_user_agent": row[13],
+        "missing_invalid_headers": row[14]
+    } for row in c.fetchall()]
+
     return jsonify({"traffic_logs": data})
+
 
 @app.route("/traffic-graph", methods=["GET"])
 def traffic_graph():
