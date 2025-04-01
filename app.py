@@ -188,15 +188,27 @@ def home():
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
     try:
+        # Try connecting to the database
         conn = get_db_connection()
         if not conn:
+            app.logger.error("Database connection failed.")
             return jsonify({"error": "Database connection failed"}), 500
+        
+        # Log the successful connection
+        app.logger.info("Database connection established successfully.")
 
         c = conn.cursor()
         c.execute("SELECT ip, timestamp, request_size, request_type, destination_port, user_agent, status FROM traffic_logs ORDER BY timestamp DESC LIMIT 100")
+        
+        # Fetch data from the database
         data = c.fetchall()
         conn.close()
 
+        # If no data is fetched, log this info
+        if not data:
+            app.logger.warning("No traffic data found in the database.")
+        
+        # Prepare the response
         traffic_list = []
         for row in data:
             traffic_list.append({
@@ -208,11 +220,15 @@ def get_traffic_data():
                 "user_agent": row[5],
                 "status": row[6],
             })
-
+        
+        # Log the traffic data being returned
+        app.logger.info(f"Returning {len(traffic_list)} traffic records.")
+        
         return jsonify({"traffic_logs": traffic_list}), 200
     except Exception as e:
         app.logger.error(f"Error in /traffic-data: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
+
 @app.route("/traffic-graph", methods=["GET"])
 def traffic_graph():
     try:
