@@ -3,6 +3,15 @@ import sqlite3
 
 app = Flask(__name__)
 
+def get_location(ip):
+    response = requests.get(f'http://ipinfo.io/{ip}/json')
+    data = response.json()
+    return data.get('country', 'Unknown'), data.get('city', 'Unknown'), data.get('loc', '0,0').split(',')
+
+# Example usage
+country, city, loc = get_location(ip)
+latitude, longitude = loc
+
 
 def initialize_database():
     conn = sqlite3.connect('traffic_logs.db')
@@ -31,19 +40,27 @@ initialize_database()
 
 
 # Middleware to log every request
-@app.before_request
 def log_traffic():
     conn = sqlite3.connect('traffic_logs.db')
     c = conn.cursor()
 
+    # Example data capture (make sure you're capturing everything you need)
     ip = request.remote_addr
-    request_size = request.content_length if request.content_length else 0
+    request_size = len(request.data)  # Or appropriate size calculation
     request_type = request.method
-    user_agent = request.headers.get('User-Agent', 'Unknown')
-    
-    # Store in the database
-    c.execute("INSERT INTO traffic_logs (ip, request_size, request_type, user_agent) VALUES (?, ?, ?, ?)",
-              (ip, request_size, request_type, user_agent))
+    user_agent = request.headers.get('User-Agent')
+    status = 'normal'  # Assuming normal, replace if you can track status
+    country = 'USA'  # Can be fetched using an API like ipstack if required
+    city = 'New York'  # Likewise, can be dynamically fetched
+    latitude = 40.7128  # Optional, dynamic latitude
+    longitude = -74.0060  # Optional, dynamic longitude
+
+    # Insert traffic data into database
+    c.execute('''
+        INSERT INTO traffic_logs (ip, request_size, request_type, user_agent, status, country, city, latitude, longitude)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (ip, request_size, request_type, user_agent, status, country, city, latitude, longitude))
+
     conn.commit()
     conn.close()
 
