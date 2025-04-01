@@ -3,6 +3,33 @@ import sqlite3
 
 app = Flask(__name__)
 
+
+def initialize_database():
+    conn = sqlite3.connect('traffic_logs.db')
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS traffic_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip TEXT,
+            timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+            request_size INTEGER,
+            request_type TEXT,
+            port INTEGER,
+            user_agent TEXT,
+            status TEXT,
+            country TEXT,
+            city TEXT,
+            latitude REAL,
+            longitude REAL
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+# Call this function at the start of your app
+initialize_database()
+
+
 # Middleware to log every request
 @app.before_request
 def log_traffic():
