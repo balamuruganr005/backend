@@ -38,31 +38,33 @@ def initialize_database():
 # Call this function at the start of your app
 initialize_database()
 
-
-# Middleware to log every request
 def log_traffic():
     conn = sqlite3.connect('traffic_logs.db')
     c = conn.cursor()
 
-    # Example data capture (make sure you're capturing everything you need)
-    ip = request.remote_addr
-    request_size = len(request.data)  # Or appropriate size calculation
-    request_type = request.method
-    user_agent = request.headers.get('User-Agent')
-    status = 'normal'  # Assuming normal, replace if you can track status
-    country = 'USA'  # Can be fetched using an API like ipstack if required
-    city = 'New York'  # Likewise, can be dynamically fetched
-    latitude = 40.7128  # Optional, dynamic latitude
-    longitude = -74.0060  # Optional, dynamic longitude
+    ip = request.remote_addr  # Get the IP address of the incoming request
+    request_size = len(request.data)  # Size of the request
+    request_type = request.method  # HTTP request method (GET, POST, etc.)
+    user_agent = request.headers.get('User-Agent')  # User-Agent from the request header
 
-    # Insert traffic data into database
+    # For now, use placeholders for status, location, etc.
+    status = 'normal'  # Assuming normal, can be modified as per DDoS detection
+    country = 'Unknown'  # Default placeholder, can be modified
+    city = 'Unknown'  # Default placeholder, can be modified
+    latitude = None  # Can use IP geolocation if necessary
+    longitude = None  # Can use IP geolocation if necessary
+
+    # Print the captured details for debugging
+    print(f"Captured Traffic: IP={ip}, Request Type={request_type}, Size={request_size}, User-Agent={user_agent}")
+
+    # Insert traffic data into the SQLite database
     c.execute('''
         INSERT INTO traffic_logs (ip, request_size, request_type, user_agent, status, country, city, latitude, longitude)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (ip, request_size, request_type, user_agent, status, country, city, latitude, longitude))
 
-    conn.commit()
-    conn.close()
+    conn.commit()  # Commit the changes to the database
+    conn.close()  # Close the connection
 
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
@@ -73,6 +75,12 @@ def get_traffic_data():
     conn.close()
     
     return jsonify(data)
+
+@app.route('/insert-traffic-data', methods=['POST'])
+def insert_traffic_data():
+    log_traffic()  # Log traffic for the incoming request
+    return jsonify({"message": "Traffic data inserted successfully."}), 200
+
 
 if __name__ == "__main__":
     app.run(debug=True)
