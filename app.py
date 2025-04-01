@@ -92,41 +92,29 @@ def get_traffic_data():
 from flask import request
 import requests
 
-@app.route('/insert-traffic-data', methods=['POST'])
+@app.route('/insert-traffic-data', methods=['POST', 'PUT', 'OPTIONS'])
 def insert_traffic_data():
-    try:
-        # Get client IP address
-        ip = request.remote_addr
+    if request.method == 'OPTIONS':  # Handle preflight request
+        return jsonify({"message": "CORS preflight successful"}), 200
+    
+    conn = sqlite3.connect('traffic_logs.db')
+    c = conn.cursor()
+    new_entry = request.json
 
-        # Get geolocation (optional)
-        location_data = requests.get(f"https://ipapi.co/{ip}/json/").json()
-        country = location_data.get("country_name", "Unknown")
-        city = location_data.get("city", "Unknown")
-        latitude = location_data.get("latitude", 0.0)
-        longitude = location_data.get("longitude", 0.0)
-
-        # Default values
-        request_size = 512
-        request_type = "GET"
-        destination_port = 443
-        user_agent = request.headers.get("User-Agent", "Unknown")
-        status = "normal"
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("""
-            INSERT INTO traffic_logs (ip, timestamp, request_size, request_type, destination_port, user_agent, status, country, city, latitude, longitude)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (ip, timestamp, request_size, request_type, destination_port, user_agent, status, country, city, latitude, longitude))
-
+    if request.method == 'POST':  # Insert new entry
+        c.execute("INSERT INTO traffic_logs (ip, request_size, request_type, destination_port, user_agent) VALUES (?, ?, ?, ?, ?)",
+                  (new_entry['ip'], new_entry['request_size'], new_entry['request_type'], new_entry['destination_port'], new_entry['user_agent']))
         conn.commit()
         conn.close()
+        return jsonify({"message": "Data inserted"}), 201
 
-        return jsonify({"message": "Visitor data inserted successfully!"})
+    elif request.method == 'PUT':  # Update existing entry
+        c.execute("UPDATE traffic_logs SET request_size = ? WHERE ip = ?",
+                  (new_entry['request_size'], new_entry['ip']))
+        conn.commit()
+        conn.close()
+        return jsonify({"message": "Data updated"}), 200
 
-    except Exception as e:
-        return jsonify({"error": f"Error inserting data: {str(e)}"})
 
 if __name__ == '__main__':
     app.run(debug=True)
