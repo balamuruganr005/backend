@@ -76,59 +76,35 @@ def home():
 
     for ip in ips:
         status = "normal"
-        high_request_rate = False
-        small_payload = False
-        large_payload = False
-        spike_in_requests = False
-        repeated_access = False
-        unusual_user_agent = False
+        try:
+            # Check if the IP exceeded the request rate in the last 60 seconds
+            c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s", (ip, timestamp - 60))
+            request_count = c.fetchone()[0]
+
+            if request_count > 100:  # If more than 100 requests in the last minute, flag as high request rate
+                status = "malicious"
+                request_size = 1500  # Correcting the request size for malicious IPs as per the rule
+        except Exception as e:
+            print(f"Error checking request rate for IP {ip}: {e}")
+            continue  # Skip the IP and continue processing others
 
         if ip in MALICIOUS_IPS:
             status = "malicious"
-            request_size = 1500  # Correcting the request size for malicious IPs as per the rule
         elif ip in BLOCKED_IPS:
             status = "blocked"
 
-        # High Request Rate: too many requests in a short period
-        c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s", (ip, timestamp - 60))
-        count_last_minute = c.fetchone()[0]
-        if count_last_minute > 100:
-            high_request_rate = True
-
-        # Small Payload: request size less than 10 bytes
-        if request_size < 10:
-            small_payload = True
-
-        # Large Payload: request size greater than a certain limit
-        if request_size > 1500:
-            large_payload = True
-
-        # Spike in Requests: More than a certain number of requests within a very short period (e.g., 10 requests within 5 seconds)
-        c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s", (ip, timestamp - 5))
-        count_last_5_seconds = c.fetchone()[0]
-        if count_last_5_seconds > 10:
-            spike_in_requests = True
-
-        # Repeated Access: Same IP requesting the same resource too frequently
-        c.execute("SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND request_type = %s AND timestamp > %s", (ip, request_type, timestamp - 60))
-        count_same_resource = c.fetchone()[0]
-        if count_same_resource > 5:
-            repeated_access = True
-
-        # Unusual User-Agent: e.g., "Go-http-client" or similar bots
-        if "Go-http-client" in user_agent:
-            unusual_user_agent = True
-
         location = get_location(ip)
 
-        # Insert into PostgreSQL database
-        c.execute("""
-            INSERT INTO traffic_logs (ip, timestamp, request_size, status, location, user_agent, request_type, 
-            high_request_rate, small_payload, large_payload, spike_in_requests, repeated_access, unusual_user_agent) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (ip, timestamp, request_size, status, location, user_agent, request_type, 
-              high_request_rate, small_payload, large_payload, spike_in_requests, repeated_access, unusual_user_agent))
-        conn.commit()
+        try:
+            # Insert into PostgreSQL database
+            c.execute("""
+                INSERT INTO traffic_logs (ip, timestamp, request_size, status, location, user_agent, request_type) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (ip, timestamp, request_size, status, location, user_agent, request_type))
+            conn.commit()
+        except Exception as e:
+            print(f"Error inserting log for IP {ip}: {e}")
+            conn.rollback()  # Rollback the transaction to prevent inconsistent state
 
     return jsonify({"message": "Request logged", "ips": ips, "size": request_size})
 
