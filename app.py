@@ -37,6 +37,37 @@ def update_timestamp_column():
 # Call this function once when the app starts or use it manually
 update_timestamp_column()
 
+from datetime import datetime
+
+def log_traffic(ip, request_size, request_type, destination_port, user_agent):
+    global IP_ANOMALY_COUNT, MALICIOUS_IPS
+
+    # Convert the current time to a Unix timestamp (REAL type)
+    timestamp = datetime.now().timestamp()  # Converts to Unix timestamp as a float
+    status = "normal"
+
+    # Detect malicious traffic
+    IP_ANOMALY_COUNT[ip] = IP_ANOMALY_COUNT.get(ip, 0) + 1
+    if IP_ANOMALY_COUNT[ip] > REPEATING_IP_THRESHOLD:
+        status = "malicious"
+        MALICIOUS_IPS.add(ip)
+
+    # Fetch geolocation
+    country, city, latitude, longitude = get_geolocation(ip)
+
+    try:
+        conn = get_db_connection()
+        if conn:
+            c = conn.cursor()
+            c.execute("""
+                INSERT INTO traffic_logs (ip, timestamp, request_size, request_type, destination_port, user_agent, status, country, city, latitude, longitude)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (ip, timestamp, request_size, request_type, destination_port, user_agent, status, country, city, latitude, longitude))
+            conn.commit()
+            c.close()
+            conn.close()
+    except Exception as e:
+        print(f"Error logging traffic: {e}")
 
 @app.route("/test-insert", methods=["GET"])
 def test_insert():
