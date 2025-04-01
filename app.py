@@ -15,6 +15,33 @@ def get_db_connection():
     except Exception as e:
         print(f"Database Connection Error: {e}")
         return None
+@app.route("/test-insert", methods=["GET"])
+def test_insert():
+    ip = "127.0.0.1"  # Test IP address
+    request_size = 1234  # Test request size
+    request_type = "GET"  # Test request type
+    destination_port = 80  # Test port
+    user_agent = "Mozilla/5.0"  # Test User-Agent
+    status = "normal"  # Test status
+
+    # Try inserting a test record
+    try:
+        conn = get_db_connection()
+        if conn:
+            c = conn.cursor()
+            c.execute("""
+                INSERT INTO traffic_logs (ip, timestamp, request_size, request_type, destination_port, user_agent, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (ip, datetime.now(), request_size, request_type, destination_port, user_agent, status))
+            conn.commit()
+            c.close()
+            conn.close()
+            return jsonify({"message": "Test data inserted successfully!"}), 200
+        else:
+            return jsonify({"error": "Database connection failed"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Error inserting data: {e}"}), 500
+
 
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
