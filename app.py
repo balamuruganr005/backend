@@ -236,13 +236,14 @@ def track_request():
     request_size = data.get("request_size", 0)
     request_type = data.get("request_type", "unknown")
     destination_port = data.get("destination_port", 80)
-    user_agent = request.headers.get("User-Agent", "unknown")
+    user_agent = data.get("user_agent", request.headers.get("User-Agent", "unknown"))
 
     if not ip:
         return jsonify({"error": "IP address is required"}), 400
 
     log_traffic(ip, request_size, request_type, destination_port, user_agent)
     return jsonify({"message": "Traffic logged successfully", "ip": ip, "status": "logged"}), 200
+
 
 
 @app.route("/traffic-graph", methods=["GET"])
