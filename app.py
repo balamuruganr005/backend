@@ -3,14 +3,21 @@ import sqlite3
 
 app = Flask(__name__)
 
-def get_location(ip):
-    response = requests.get(f'http://ipinfo.io/{ip}/json')
-    data = response.json()
-    return data.get('country', 'Unknown'), data.get('city', 'Unknown'), data.get('loc', '0,0').split(',')
+from flask import request
 
-# Example usage
-country, city, loc = get_location(ip)
-latitude, longitude = loc
+def get_location(ip):
+    # Assuming get_location is a function that fetches the location of the IP
+    # Add your logic for location fetching here
+    # For now, just return some dummy data
+    return "USA", "New York", "40.7128,-74.0060"
+
+# Inside your route or main code, you need to define `ip` first
+@app.route('/')
+def home():
+    ip = request.remote_addr  # This will get the IP address of the incoming request
+    country, city, loc = get_location(ip)  # Now `ip` is defined
+    print(f"IP: {ip}, Location: {country}, {city}, {loc}")
+    return f"Your IP is {ip} and you are in {city}, {country}."
 
 
 def initialize_database():
