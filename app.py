@@ -178,19 +178,30 @@ def home():
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
     """Retrieve all logged traffic data from PostgreSQL."""
-    c.execute("""
-        SELECT id, ip, timestamp, request_size, status, location, user_agent, 
-        request_type, high_request_rate, small_payload, large_payload, spike_in_requests, 
-        repeated_access, unusual_user_agent, invalid_headers, destination_port, country, city 
-        FROM traffic_logs
-    """)
-    data = [{"id": row[0], "ip": row[1], "time": row[2], "size": row[3], "status": row[4], 
-             "location": row[5], "user_agent": row[6], "request_type": row[7], 
-             "high_request_rate": row[8], "small_payload": row[9], "large_payload": row[10], 
-             "spike_in_requests": row[11], "repeated_access": row[12], "unusual_user_agent": row[13], 
-             "invalid_headers": row[14], "destination_port": row[15], "country": row[16], "city": row[17]} 
-            for row in c.fetchall()]
-    return jsonify({"traffic_logs": data})
+    try:
+        with conn.cursor() as c:
+            c.execute("""
+                SELECT id, ip, timestamp, request_size, status, location, user_agent, 
+                       request_type, high_request_rate, small_payload, large_payload, 
+                       spike_in_requests, repeated_access, unusual_user_agent, 
+                       invalid_headers, destination_port, country, city 
+                FROM traffic_logs
+            """)
+            rows = c.fetchall()
+
+            columns = [
+                "id", "ip", "time", "size", "status", "location", "user_agent",
+                "request_type", "high_request_rate", "small_payload", "large_payload",
+                "spike_in_requests", "repeated_access", "unusual_user_agent",
+                "invalid_headers", "destination_port", "country", "city"
+            ]
+
+            data = [dict(zip(columns, row)) for row in rows]
+
+        return jsonify({"traffic_logs": data})
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/traffic-graph", methods=["GET"])
 def traffic_graph():
