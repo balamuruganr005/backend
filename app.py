@@ -232,6 +232,8 @@ def traffic_graph():
 
 @app.route("/insert-traffic-data", methods=["POST"])
 def insert_traffic_data():
+    print("🔔 insert_traffic_data called")
+    print("Payload:", request.get_json())
     try:
         data = request.get_json()
 
