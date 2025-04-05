@@ -11,7 +11,7 @@ import requests
 import os
 
 app = Flask(__name__)
-CORS(app, origins=["https://ddosweb.vercel.app"])
+CORS(app, resources={r"/*": {"origins": "https://ddosweb.vercel.app"}})
 
 # Initialize rate limiter (to prevent DDoS)
 limiter = Limiter(
@@ -177,7 +177,6 @@ def home():
 
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
-    """Retrieve all logged traffic data from PostgreSQL."""
     try:
         with conn.cursor() as c:
             c.execute("""
@@ -205,29 +204,65 @@ def get_traffic_data():
 
 @app.route("/traffic-graph", methods=["GET"])
 def traffic_graph():
-    """Generates and returns a graph of traffic over time from PostgreSQL."""
-    c.execute("SELECT timestamp FROM traffic_logs")
-    data = c.fetchall()
+    try:
+        with conn.cursor() as c:
+            c.execute("SELECT timestamp FROM traffic_logs ORDER BY timestamp ASC")
+            rows = c.fetchall()
 
-    if not data:
-        return jsonify({"error": "No data available"})
+        if not rows:
+            return jsonify({"error": "No data available"}), 404
 
-    times = [row[0] for row in data]
-    timestamps = [time.strftime("%H:%M:%S", time.localtime(t)) for t in times]
+        timestamps = [time.strftime("%H:%M:%S", time.localtime(row[0])) for row in rows]
 
-    plt.figure(figsize=(10, 5))
-    plt.step(timestamps, range(len(timestamps)), marker="o", linestyle="-", color="b")
-    plt.xlabel("Time")
-    plt.ylabel("Requests")
-    plt.title("Traffic Flow Over Time")
-    plt.xticks(rotation=45)
+        plt.figure(figsize=(10, 5))
+        plt.step(timestamps, range(len(timestamps)), marker="o", linestyle="-", color="b")
+        plt.xlabel("Time")
+        plt.ylabel("Requests")
+        plt.title("Traffic Flow Over Time")
+        plt.xticks(rotation=45)
 
-    # Save image to a file and return it
-    img_path = "traffic_graph.png"
-    plt.savefig(img_path)
-    plt.close()
-    
-    return send_file(img_path, mimetype='image/png')
+        img_path = "traffic_graph.png"
+        plt.savefig(img_path)
+        plt.close()
+
+        return send_file(img_path, mimetype='image/png')
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/insert-traffic-data", methods=["POST"])
+def insert_traffic_data():
+    try:
+        data = request.get_json()
+
+        ip = request.remote_addr if data.get("ip") == "auto" else data.get("ip")
+        request_size = data.get("request_size", 0)
+        request_type = data.get("request_type", "GET")
+        destination_port = data.get("destination_port", 443)
+        user_agent = data.get("user_agent", "unknown")
+        timestamp = int(time.time())
+
+        # Insert with basic defaults (You can enhance detection later)
+        with conn.cursor() as c:
+            c.execute("""
+                INSERT INTO traffic_logs (
+                    ip, timestamp, request_size, status, location, user_agent, request_type, 
+                    high_request_rate, small_payload, large_payload, spike_in_requests, 
+                    repeated_access, unusual_user_agent, invalid_headers, destination_port, 
+                    country, city
+                ) VALUES (
+                    %s, %s, %s, 'normal', 'unknown', %s, %s,
+                    false, false, false, false,
+                    false, false, false, %s,
+                    'unknown', 'unknown'
+                )
+            """, (ip, timestamp, request_size, user_agent, request_type, destination_port))
+            conn.commit()
+
+        return jsonify({"message": "Traffic data logged successfully"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
