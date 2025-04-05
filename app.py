@@ -235,14 +235,29 @@ def insert_traffic_data():
     try:
         data = request.get_json()
 
-        ip = request.remote_addr if data.get("ip") == "auto" else data.get("ip")
-        request_size = data.get("request_size", 0)
+        # Auto IP detection fallback
+        ip = request.remote_addr if data.get("ip") == "auto" or not data.get("ip") else data.get("ip")
+        request_size = int(data.get("request_size", 0))
         request_type = data.get("request_type", "GET")
-        destination_port = data.get("destination_port", 443)
+        destination_port = int(data.get("destination_port", 443))
         user_agent = data.get("user_agent", "unknown")
         timestamp = int(time.time())
 
-        # Insert with basic defaults (You can enhance detection later)
+        # Default placeholders
+        location = data.get("location", "unknown")
+        country = data.get("country", "unknown")
+        city = data.get("city", "unknown")
+
+        # Flags – default to False for now
+        high_request_rate = False
+        small_payload = request_size < 100
+        large_payload = request_size > 1000
+        spike_in_requests = False
+        repeated_access = False
+        unusual_user_agent = "bot" in user_agent.lower()
+        invalid_headers = False  # Could be improved with header analysis
+
+        # Insert data
         with conn.cursor() as c:
             c.execute("""
                 INSERT INTO traffic_logs (
@@ -251,18 +266,24 @@ def insert_traffic_data():
                     repeated_access, unusual_user_agent, invalid_headers, destination_port, 
                     country, city
                 ) VALUES (
-                    %s, %s, %s, 'normal', 'unknown', %s, %s,
-                    false, false, false, false,
-                    false, false, false, %s,
-                    'unknown', 'unknown'
+                    %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s
                 )
-            """, (ip, timestamp, request_size, user_agent, request_type, destination_port))
+            """, (
+                ip, timestamp, request_size, "normal", location, user_agent, request_type,
+                high_request_rate, small_payload, large_payload, spike_in_requests,
+                repeated_access, unusual_user_agent, invalid_headers, destination_port,
+                country, city
+            ))
             conn.commit()
 
         return jsonify({"message": "Traffic data logged successfully"}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
