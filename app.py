@@ -102,20 +102,24 @@ def get_client_ips():
     return [request.remote_addr]
 
 
-def get_geolocation(ip):
-    """
-    Uses MaxMind GeoLite2 to get accurate geolocation info for a given IP.
-    Returns: (country, city, location)
-    """
+def get_location(ip):
     try:
-        response = geo_reader.city(ip)
-        country = response.country.name if response.country.name else "Unknown"
-        city = response.city.name if response.city.name else "Unknown"
-        location = f"{city}, {country}"
-        return country, city, location
+        reader = geolite2.reader()
+        geo_info = reader.get(ip)
+        geolite2.close()
+
+        if geo_info:
+            country = geo_info.get('country', {}).get('names', {}).get('en', 'Unknown')
+            city = geo_info.get('city', {}).get('names', {}).get('en', 'Unknown')
+            location = f"{geo_info.get('location', {}).get('latitude', 'N/A')}, {geo_info.get('location', {}).get('longitude', 'N/A')}"
+        else:
+            location, city, country = 'Unknown', 'Unknown', 'Unknown'
+
+        return location, city, country
+
     except Exception as e:
-        print(f"[GeoIP error for IP {ip}]: {e}")
-        return "Unknown", "Unknown", "Unknown"
+        print(f"[GeoError] {e}")
+        return 'Unknown', 'Unknown', 'Unknown'
 
 
 @app.route("/", methods=["GET", "POST"])
