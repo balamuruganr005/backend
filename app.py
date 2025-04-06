@@ -84,14 +84,17 @@ def check_access():
     return jsonify({"ip": ip, "allowed": allowed})
 
 def get_client_ips():
-    """
-    Extracts all IPs from X-Forwarded-For header.
-    If no header, fallback to remote_addr.
-    """
-    forwarded = request.headers.get("X-Forwarded-For", None)
+    # Cloudflare sends client IP in CF-Connecting-IP
+    cf_ip = request.headers.get("CF-Connecting-IP")
+    if cf_ip:
+        return [cf_ip]
+
+    # Fall back to X-Forwarded-For
+    forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
-        return [ip.strip() for ip in forwarded.split(",")]  # Return list of IPs
-    return [request.remote_addr]  # Single IP in list format
+        return [ip.strip() for ip in forwarded.split(",")]
+
+    return [request.remote_addr]
 
 def get_location(ip):
     """Returns location based on IP address using a free API."""
