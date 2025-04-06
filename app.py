@@ -85,28 +85,38 @@ def check_access():
     return jsonify({"ip": ip, "allowed": allowed})
 
 def get_client_ips():
-    # Cloudflare sends client IP in CF-Connecting-IP
+    """
+    Returns a list of client IPs from headers in priority order:
+    1. CF-Connecting-IP (Cloudflare)
+    2. X-Forwarded-For (proxy chains)
+    3. Remote address (direct request)
+    """
     cf_ip = request.headers.get("CF-Connecting-IP")
     if cf_ip:
         return [cf_ip]
 
-    # Fall back to X-Forwarded-For
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return [ip.strip() for ip in forwarded.split(",")]
 
     return [request.remote_addr]
 
+
 def get_geolocation(ip):
+    """
+    Uses MaxMind GeoLite2 to get accurate geolocation info for a given IP.
+    Returns: (country, city, location)
+    """
     try:
         response = geo_reader.city(ip)
-        country = response.country.name or "Unknown"
-        city = response.city.name or "Unknown"
+        country = response.country.name if response.country.name else "Unknown"
+        city = response.city.name if response.city.name else "Unknown"
         location = f"{city}, {country}"
         return country, city, location
     except Exception as e:
-        print(f"[GeoIP error]: {e}")
+        print(f"[GeoIP error for IP {ip}]: {e}")
         return "Unknown", "Unknown", "Unknown"
+
 
 @app.route("/", methods=["GET", "POST"])
 def home():
