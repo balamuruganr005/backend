@@ -2,6 +2,7 @@ flask
 flask-limiter
 gunicorn
 flask-cors
+geoip2
 matplotlib
 requests
 psycopg2
