@@ -110,77 +110,70 @@ def get_geolocation(ip):
 
 @app.route("/", methods=["GET", "POST"])
 def home():
-    """Logs each request, stores it in PostgreSQL, and returns a success response."""
     timestamp = time.time()
     ips = get_client_ips()
-    request_size = len(str(request.data))  # Approximate request size in bytes
+    request_size = len(str(request.data))
     user_agent = request.headers.get("User-Agent", "unknown")
     request_type = request.method
 
     for ip in ips:
-        status = "normal"  # Default status
-        
-        # Rule 1: Check for small request size
-        if request_size < 50:  # Threshold for suspiciously small requests
-            status = "suspicious"  # Flag small requests as suspicious
-        # Rule 2: Check for large request size (could indicate a DDoS or resource request)
-        elif request_size > 5000:  # Arbitrary large size threshold (can be adjusted)
-            status = "suspicious"  # Flag large requests as suspicious
-            
-        # Rule 3: Check for repeated requests from the same IP (could indicate scanning or brute-force attempts)
-        # This requires analyzing request frequency over time
-        c.execute("""
-            SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s
-        """, (ip, time.time() - 60))  # Check for requests from the last 60 seconds
-        request_count = c.fetchone()[0]
-        if request_count > 50:  # Arbitrary threshold for repeated requests (adjust as needed)
+        status = "normal"
+        destination_port = int(request.environ.get('REMOTE_PORT', 443))
+
+        # Rules
+        if request_size < 50:
             status = "suspicious"
-        
-        # Rule 4: Known malicious IPs
+        elif request_size > 5000:
+            status = "suspicious"
+
+        c.execute("""SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s""",
+                  (ip, time.time() - 60))
+        request_count = c.fetchone()[0]
+        if request_count > 50:
+            status = "suspicious"
+
         if ip in MALICIOUS_IPS:
             status = "malicious"
-            request_size = 1500  # Correcting the request size for malicious IPs
-        # Rule 5: Blocked IPs
+            request_size = 1500
         elif ip in BLOCKED_IPS:
             status = "blocked"
 
-        # Rule 6: Unusual user agent strings (could be part of an attack attempt)
         if "bot" in user_agent.lower() or "crawl" in user_agent.lower():
-            status = "suspicious"  # Flag bots or crawlers as suspicious
+            status = "suspicious"
 
-        # Rule 7: Extremely high request rate in a short period (could indicate DDoS)
-        c.execute("""
-            SELECT COUNT(*) FROM traffic_logs WHERE timestamp > %s
-        """, (time.time() - 5,))  # Check the request rate in the last 5 seconds
+        c.execute("""SELECT COUNT(*) FROM traffic_logs WHERE timestamp > %s""",
+                  (time.time() - 5,))
         recent_requests = c.fetchone()[0]
-        if recent_requests > 100:  # Arbitrary threshold for rapid request bursts (adjust as needed)
-            status = "malicious"  # Flag rapid request bursts as malicious
+        if recent_requests > 100:
+            status = "malicious"
 
-        location, city = get_location(ip)
-        # Traffic behavior analysis
-        high_request_rate = False  # Placeholder for actual logic
-        small_payload = request_size < 500  # Example logic
-        large_payload = request_size > 10000  # Example logic
-        spike_in_requests = False  # Placeholder for actual logic
-        repeated_access = False  # Placeholder for actual logic
-        unusual_user_agent = "bot" in user_agent.lower()  # Simple check for bots
-        invalid_headers = False  # Placeholder for actual logic
-        destination_port = request.environ.get('REMOTE_PORT', 'Unknown')  # Get destination port
+        # Get location data
+        location, city, country = get_location(ip)
 
-        # Insert into PostgreSQL database
+        # Behavioral flags
+        high_request_rate = request_count > 100
+        small_payload = request_size < 500
+        large_payload = request_size > 10000
+        spike_in_requests = recent_requests > 100
+        repeated_access = request_count > 10
+        unusual_user_agent = "bot" in user_agent.lower()
+        invalid_headers = False  # You can implement actual logic here
+
         c.execute("""
             INSERT INTO traffic_logs 
             (ip, timestamp, request_size, status, location, user_agent, request_type, 
-            high_request_rate, small_payload, large_payload, spike_in_requests, 
-            repeated_access, unusual_user_agent, invalid_headers, destination_port, country, city) 
+             high_request_rate, small_payload, large_payload, spike_in_requests, 
+             repeated_access, unusual_user_agent, invalid_headers, destination_port, 
+             country, city) 
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (ip, timestamp, request_size, status, location, user_agent, request_type, 
-              high_request_rate, small_payload, large_payload, spike_in_requests, 
-              repeated_access, unusual_user_agent, invalid_headers, destination_port, 
-              "unknown", city))
+        """, (ip, timestamp, request_size, status, location, user_agent, request_type,
+              high_request_rate, small_payload, large_payload, spike_in_requests,
+              repeated_access, unusual_user_agent, invalid_headers, destination_port,
+              country, city))
         conn.commit()
 
     return jsonify({"message": "Request logged", "ips": ips, "size": request_size})
+
 
 @app.route("/traffic-data", methods=["GET"])
 def get_traffic_data():
