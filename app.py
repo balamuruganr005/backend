@@ -6,6 +6,7 @@ import time
 import matplotlib.pyplot as plt
 import io
 import psycopg2
+import geoip2.database
 import numpy as np
 import requests
 import os
@@ -96,13 +97,16 @@ def get_client_ips():
 
     return [request.remote_addr]
 
-def get_location(ip):
-    """Returns location based on IP address using a free API."""
+def get_geolocation(ip):
     try:
-        response = requests.get(f"http://ip-api.com/json/{ip}").json()
-        return response.get("country", "unknown"), response.get("city", "unknown")
-    except requests.RequestException:
-        return "unknown", "unknown"
+        response = geo_reader.city(ip)
+        country = response.country.name or "Unknown"
+        city = response.city.name or "Unknown"
+        location = f"{city}, {country}"
+        return country, city, location
+    except Exception as e:
+        print(f"[GeoIP error]: {e}")
+        return "Unknown", "Unknown", "Unknown"
 
 @app.route("/", methods=["GET", "POST"])
 def home():
