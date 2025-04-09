@@ -335,25 +335,19 @@ def detect_anomaly():
 @app.route('/traffic-summary', methods=['GET'])
 def traffic_summary():
     try:
-        conn = psycopg2.connect(
-            host=os.environ.get("DB_HOST"),
-            database=os.environ.get("DB_NAME"),
-            user=os.environ.get("DB_USER"),
-            password=os.environ.get("DB_PASSWORD"),
-            port=os.environ.get("DB_PORT")
-        )
+        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
         cursor = conn.cursor()
 
-        # Query count of legit and malicious traffic
+        # Get counts of Legit and Malicious traffic
         cursor.execute("""
             SELECT status, COUNT(*) 
-            FROM traffic 
+            FROM traffic_logs 
             GROUP BY status;
         """)
         rows = cursor.fetchall()
+
         summary = {"legit": 0, "malicious": 0}
-        for row in rows:
-            status, count = row
+        for status, count in rows:
             if status.lower() == "legit":
                 summary["legit"] = count
             elif status.lower() == "malicious":
@@ -366,6 +360,7 @@ def traffic_summary():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 if __name__ == "__main__":
