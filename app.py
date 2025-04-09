@@ -375,6 +375,27 @@ def debug_status():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/dnn-stats", methods=["GET"])
+def dnn_stats():
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        cursor.execute("SELECT status, COUNT(*) FROM traffic_logs GROUP BY status")
+        result = cursor.fetchall()
+        conn.close()
+
+        stats = {"legit": 0, "malicious": 0}
+        for status, count in result:
+            if str(status) == "0":
+                stats["legit"] = count
+            else:
+                stats["malicious"] = count
+
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
