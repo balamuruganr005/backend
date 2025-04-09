@@ -338,29 +338,41 @@ def traffic_summary():
         conn = psycopg2.connect(DATABASE_URL, sslmode='require')
         cursor = conn.cursor()
 
-        # Get counts of Legit and Malicious traffic
-        cursor.execute("""
-            SELECT status, COUNT(*) 
-            FROM traffic_logs 
-            GROUP BY status;
-        """)
+        cursor.execute("SELECT LOWER(status), COUNT(*) FROM traffic_logs GROUP BY LOWER(status);")
         rows = cursor.fetchall()
 
         summary = {"legit": 0, "malicious": 0}
         for status, count in rows:
-            if status.lower() == "legit":
+            if status == "legit":
                 summary["legit"] = count
-            elif status.lower() == "malicious":
+            elif status == "malicious":
                 summary["malicious"] = count
 
         cursor.close()
         conn.close()
-
         return jsonify(summary)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route("/debug-status", methods=["GET"])
+def debug_status():
+    try:
+        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT status, COUNT(*) FROM traffic_logs GROUP BY status;")
+        rows = cursor.fetchall()
+
+        result = {status: count for status, count in rows}
+        cursor.close()
+        conn.close()
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
