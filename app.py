@@ -332,5 +332,41 @@ def detect_anomaly():
         "total_ips_with_anomalies": len(anomalies_by_ip)
     })
 
+@app.route('/traffic-summary', methods=['GET'])
+def traffic_summary():
+    try:
+        conn = psycopg2.connect(
+            host=os.environ.get("DB_HOST"),
+            database=os.environ.get("DB_NAME"),
+            user=os.environ.get("DB_USER"),
+            password=os.environ.get("DB_PASSWORD"),
+            port=os.environ.get("DB_PORT")
+        )
+        cursor = conn.cursor()
+
+        # Query count of legit and malicious traffic
+        cursor.execute("""
+            SELECT status, COUNT(*) 
+            FROM traffic 
+            GROUP BY status;
+        """)
+        rows = cursor.fetchall()
+        summary = {"legit": 0, "malicious": 0}
+        for row in rows:
+            status, count = row
+            if status.lower() == "legit":
+                summary["legit"] = count
+            elif status.lower() == "malicious":
+                summary["malicious"] = count
+
+        cursor.close()
+        conn.close()
+
+        return jsonify(summary)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
