@@ -12,7 +12,9 @@ import requests
 import os
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "https://ddosweb.vercel.app"}})
+
+# Updated CORS configuration
+CORS(app, origins=["http://localhost:5173", "https://ddosweb.vercel.app"])
 
 # Initialize rate limiter (to prevent DDoS)
 limiter = Limiter(
