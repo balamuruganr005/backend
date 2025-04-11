@@ -395,6 +395,69 @@ def dnn_stats():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Load your DNN model and preprocessor (if any)
+dnn_model = joblib.load('dnn_model.pkl')
+try:
+    dnn_preprocessor = joblib.load('dnn_preprocessor.pkl')
+except:
+    dnn_preprocessor = None
+
+# Define route
+@app.route('/predict-dnn', methods=['POST'])
+def predict_dnn():
+    data = request.get_json()
+
+    # Define feature order expected by the model
+    feature_keys = [
+        'request_size', 'destination_port', 'high_request_rate', 'large_payload',
+        'spike_in_requests', 'repeated_access', 'unusual_user_agent',
+        'invalid_headers', 'small_payload'
+    ]
+
+    # Convert to feature array
+    try:
+        features = [data[key] for key in feature_keys]
+    except KeyError as e:
+        return jsonify({'error': f'Missing feature: {str(e)}'}), 400
+
+    # Apply preprocessing if needed
+    X = np.array([features])
+    if dnn_preprocessor:
+        X = dnn_preprocessor.transform(X)
+
+    # Make prediction
+    prediction = dnn_model.predict(X)[0]
+    confidence = max(dnn_model.predict_proba(X)[0])
+
+    # Optional: insert result into PostgreSQL
+    try:
+        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO traffic_logs (ip, timestamp, request_size, destination_port, dnn_prediction, confidence)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            data.get("ip", "0.0.0.0"),
+            datetime.utcnow(),
+            data["request_size"],
+            data["destination_port"],
+            int(prediction),
+            round(float(confidence), 3)
+        ))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print("DB insert failed:", e)
+
+    # Send response
+    result = {
+        "prediction": int(prediction),   # 1 = malicious, 0 = legit
+        "confidence": round(float(confidence), 3),
+        "message": "Malicious" if prediction == 1 else "Legitimate"
+    }
+    return jsonify(result)
+
 
 
 if __name__ == "__main__":
