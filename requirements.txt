@@ -6,3 +6,4 @@ geoip2
 matplotlib
 requests
 psycopg2
+joblib
