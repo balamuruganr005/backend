@@ -561,20 +561,27 @@ Suggested Action: Check firewall and restrict repeated offenders.
     except Exception as e:
         print(f"❌ Failed to send alert email. Error: {str(e)}")
 
+from flask import Flask, jsonify, request
 import psycopg2
+from psycopg2 import sql
+import os
+
+app = Flask(__name__)
 
 DB_URL = "postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci"
 
+# ✅ Insert user into legit_users or attackers
 def insert_user(ip, timestamp, city, user_agent, is_malicious):
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         
-        table = "attackers" if is_malicious else "legit_users"
-        cur.execute(f"""
-            INSERT INTO {table} (ip, timestamp, city, user_agent)
-            VALUES (%s, to_timestamp(%s), %s, %s);
-        """, (ip, timestamp, city, user_agent))
+        table_name = "attackers" if is_malicious else "legit_users"
+        cur.execute(
+            sql.SQL("INSERT INTO {} (ip, timestamp, city, user_agent) VALUES (%s, to_timestamp(%s), %s, %s);")
+            .format(sql.Identifier(table_name)),
+            (ip, timestamp, city, user_agent)
+        )
         
         conn.commit()
         cur.close()
@@ -582,31 +589,51 @@ def insert_user(ip, timestamp, city, user_agent, is_malicious):
     except Exception as e:
         print("DB Insert Error:", e)
 
+# ✅ Get legit users
 @app.route("/legit-users", methods=["GET"])
 def get_legit_users():
-    conn = psycopg2.connect(DB_URL)
-    cur = conn.cursor()
-    cur.execute("SELECT ip, timestamp, city, user_agent FROM legit_users ORDER BY timestamp DESC LIMIT 100;")
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute("SELECT ip, timestamp, city, user_agent FROM legit_users ORDER BY timestamp DESC LIMIT 100;")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
 
-    return jsonify([
-        {"ip": r[0], "time": r[1], "city": r[2], "user_agent": r[3]} for r in rows
-    ])
+        return jsonify([
+            {
+                "ip": row[0],
+                "time": row[1].strftime("%Y-%m-%d %H:%M:%S"),
+                "city": row[2],
+                "user_agent": row[3]
+            } for row in rows
+        ])
+    except Exception as e:
+        print("Error fetching legit users:", e)
+        return jsonify({"error": "Failed to fetch legit users"}), 500
 
+# ✅ Get attackers
 @app.route("/attackers", methods=["GET"])
 def get_attackers():
-    conn = psycopg2.connect(DB_URL)
-    cur = conn.cursor()
-    cur.execute("SELECT ip, timestamp, city, user_agent FROM attackers ORDER BY timestamp DESC LIMIT 100;")
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute("SELECT ip, timestamp, city, user_agent FROM attackers ORDER BY timestamp DESC LIMIT 100;")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
 
-    return jsonify([
-        {"ip": r[0], "time": r[1], "city": r[2], "user_agent": r[3]} for r in rows
-    ])
+        return jsonify([
+            {
+                "ip": row[0],
+                "time": row[1].strftime("%Y-%m-%d %H:%M:%S"),
+                "city": row[2],
+                "user_agent": row[3]
+            } for row in rows
+        ])
+    except Exception as e:
+        print("Error fetching attackers:", e)
+        return jsonify({"error": "Failed to fetch attackers"}), 500
 
 
 if __name__ == "__main__":
