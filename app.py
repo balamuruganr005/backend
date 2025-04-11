@@ -398,20 +398,32 @@ def dnn_stats():
 
 import os
 import joblib
+import requests
 
-# Absolute path to dnn_model.pkl
-model_path = os.path.join(os.path.dirname(__file__), "dnn_model.pkl")
+# Google Drive direct download link (replace with your actual file ID)
+MODEL_URL = "https://drive.google.com/uc?id=1Zd9GOeDeFuYAwBpj0cIBVA2Z8LwiaAIl"
+MODEL_FILENAME = "dnn_model.pkl"
+model_path = os.path.join(os.path.dirname(__file__), MODEL_FILENAME)
 
+# Step 1: Download model if not present
+if not os.path.exists(model_path):
+    print("[Model] dnn_model.pkl not found. Downloading from Google Drive...")
+    try:
+        response = requests.get(MODEL_URL)
+        with open(model_path, "wb") as f:
+            f.write(response.content)
+        print("[Model Download] Successfully downloaded DNN model ✅")
+    except Exception as e:
+        print(f"[Model Download Error] Failed to download model: {e}")
+
+# Step 2: Load the DNN model
 try:
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(f"Model file not found at {model_path}")
-    
     dnn_model = joblib.load(model_path)
     print("[Model Load] DNN model loaded successfully ✅")
-
 except Exception as e:
     print(f"[Model Load Error] Could not load DNN model: {e}")
     dnn_model = None
+
 
 
 
