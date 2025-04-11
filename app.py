@@ -582,6 +582,26 @@ def get_alert_history():
         })
     return jsonify(history)
 
+@app.route("/test-email", methods=["GET"])
+def test_email():
+    test_ip = "123.123.123.123"
+    test_prediction = 1
+    test_data = {
+        "request_size": 500,
+        "destination_port": 80,
+        "high_request_rate": 1,
+        "large_payload": 1,
+        "spike_in_requests": 1,
+        "repeated_access": 1,
+        "unusual_user_agent": 1,
+        "invalid_headers": 0,
+        "small_payload": 0
+    }
+    
+    send_alert_email(test_ip, test_prediction, test_data)
+    return jsonify({"message": "Test email sent!"})
+
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
