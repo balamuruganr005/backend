@@ -11,7 +11,7 @@ import numpy as np
 import requests
 import os
 import joblib
-from geolit2 import geolite2
+from geolite2 import geolite2
 
 app = Flask(__name__)
 
