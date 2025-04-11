@@ -7,3 +7,4 @@ matplotlib
 requests
 psycopg2
 joblib
+scikit-learn
