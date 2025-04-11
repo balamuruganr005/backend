@@ -610,7 +610,7 @@ def test_email():
 def monitor_ddos_alerts():
     while True:
         try:
-            conn = psycopg2.connect("postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci")
+            conn = psycopg2.connect("postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a/traffic_db_6kci")
             cursor = conn.cursor()
 
             cursor.execute("SELECT * FROM traffic WHERE status = 1 ORDER BY timestamp DESC LIMIT 1;")
