@@ -11,6 +11,10 @@ import numpy as np
 import requests
 import os
 import joblib
+from collections import defaultdict
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 
 app = Flask(__name__)
@@ -561,6 +565,114 @@ Suggested Action: Check firewall and restrict repeated offenders.
     except Exception as e:
         print(f"❌ Failed to send alert email. Error: {str(e)}")
 
+app = Flask(__name__)
+CORS(app)
+
+# Load DNN model
+dnn_model = joblib.load("dnn_model.pkl")
+
+# PostgreSQL connection
+conn = psycopg2.connect("postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci")
+cursor = conn.cursor()
+
+# Create alerts table if not exists
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS alerts (
+        id SERIAL PRIMARY KEY,
+        ip VARCHAR,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        message TEXT,
+        dnn_prediction INT
+    );
+""")
+conn.commit()
+
+ip_requests = defaultdict(list)
+blocklist = set()
+
+def preprocess_request_data(request_data):
+    features = [
+        request_data.get("request_size", 0),
+        request_data.get("destination_port", 0),
+        request_data.get("high_request_rate", 0),
+        request_data.get("large_payload", 0),
+        request_data.get("spike_in_requests", 0),
+        request_data.get("repeated_access", 0),
+        request_data.get("unusual_user_agent", 0),
+        request_data.get("invalid_headers", 0),
+        request_data.get("small_payload", 0)
+    ]
+    return [features]
+
+def send_alert_email(ip, dnn_prediction, request_data):
+    from_email = "iambalamurugan005@gmail.com"
+    to_email = "iambalamurugan05@gmail.com"
+    subject = "🚨 DDoS Alert from DNN Detection"
+    
+    body = f"""
+    ⚠️ Potential DDoS attack detected!
+    IP Address: {ip}
+    DNN Prediction: {dnn_prediction}
+    Request Data: {request_data}
+    """
+    
+    msg = MIMEMultipart()
+    msg['From'] = from_email
+    msg['To'] = to_email
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body, 'plain'))
+    
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(from_email, 'tsdryornazoifbcl')  # App Password
+        server.sendmail(from_email, to_email, msg.as_string())
+        server.quit()
+        print("✅ Email alert sent.")
+    except Exception as e:
+        print("❌ Failed to send email:", e)
+
+@app.route("/detect-dnn", methods=["POST"])
+def detect_dnn():
+    data = request.get_json()
+    ip = data.get("ip", "unknown")
+    features = preprocess_request_data(data)
+    
+    prediction = dnn_model.predict(features)[0]
+
+    if prediction == 1:
+        # Block IP
+        blocklist.add(ip)
+
+        # Store alert in DB
+        alert_msg = f"DNN detected attack from IP: {ip}"
+        cursor.execute("""
+            INSERT INTO alerts (ip, message, dnn_prediction)
+            VALUES (%s, %s, %s)
+        """, (ip, alert_msg, prediction))
+        conn.commit()
+
+        # Send email
+        send_alert_email(ip, prediction, data)
+
+        return jsonify({"status": "blocked", "prediction": int(prediction), "message": alert_msg})
+    else:
+        return jsonify({"status": "allowed", "prediction": int(prediction)})
+
+@app.route("/alert-history", methods=["GET"])
+def get_alert_history():
+    cursor.execute("SELECT ip, timestamp, message, dnn_prediction FROM alerts ORDER BY timestamp DESC LIMIT 50;")
+    rows = cursor.fetchall()
+
+    history = []
+    for row in rows:
+        history.append({
+            "ip": row[0],
+            "timestamp": row[1].strftime("%Y-%m-%d %H:%M:%S"),
+            "message": row[2],
+            "dnn_prediction": row[3]
+        })
+    return jsonify(history)
 
 
 if __name__ == "__main__":
