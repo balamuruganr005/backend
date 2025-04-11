@@ -582,6 +582,11 @@ def get_alert_history():
         })
     return jsonify(history)
 
+from flask import Flask, request, jsonify
+app = Flask(__name__)
+
+# Import your send_alert_email function or use generate_alert from your DNN script
+
 @app.route("/test-email", methods=["GET"])
 def test_email():
     test_ip = "123.123.123.123"
@@ -598,7 +603,7 @@ def test_email():
         "small_payload": 0
     }
     
-    send_alert_email(test_ip, test_prediction, test_data)
+    generate_alert(test_data, 1, 1, 1)  # or send_alert_email(...) if you're using a simpler method
     return jsonify({"message": "Test email sent!"})
 
 
