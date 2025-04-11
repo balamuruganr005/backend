@@ -10,6 +10,7 @@ import geoip2.database
 import numpy as np
 import requests
 import os
+import joblib
 
 app = Flask(__name__)
 
