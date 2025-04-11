@@ -587,24 +587,59 @@ app = Flask(__name__)
 
 # Import your send_alert_email function or use generate_alert from your DNN script
 
-@app.route("/test-email", methods=["GET"])
+@app.route('/test-email', methods=['GET'])
 def test_email():
-    test_ip = "123.123.123.123"
-    test_prediction = 1
-    test_data = {
-        "request_size": 500,
-        "destination_port": 80,
-        "high_request_rate": 1,
-        "large_payload": 1,
-        "spike_in_requests": 1,
-        "repeated_access": 1,
-        "unusual_user_agent": 1,
-        "invalid_headers": 0,
-        "small_payload": 0
-    }
-    
-    generate_alert(test_data, 1, 1, 1)  # or send_alert_email(...) if you're using a simpler method
-    return jsonify({"message": "Test email sent!"})
+    try:
+        test_data = {
+            "ip": "123.123.123.123",
+            "request_size": 500,
+            "destination_port": 80,
+            "high_request_rate": 1,
+            "large_payload": 1,
+            "spike_in_requests": 1,
+            "repeated_access": 1,
+            "unusual_user_agent": 1,
+            "invalid_headers": 1,
+            "small_payload": 0
+        }
+        send_alert_email(test_data, 1, 1, 1)
+        return jsonify({"message": "✅ Test email sent successfully!"})
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+def monitor_ddos_alerts():
+    while True:
+        try:
+            conn = psycopg2.connect("postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci")
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT * FROM traffic WHERE status = 1 ORDER BY timestamp DESC LIMIT 1;")
+            row = cursor.fetchone()
+
+            if row:
+                print("🚨 Malicious traffic found, sending alert...")
+                request_data = {
+                    "ip": row[1],
+                    "request_size": row[2],
+                    "destination_port": row[3],
+                    "high_request_rate": row[4],
+                    "large_payload": row[5],
+                    "spike_in_requests": row[6],
+                    "repeated_access": row[7],
+                    "unusual_user_agent": row[8],
+                    "invalid_headers": row[9],
+                    "small_payload": row[10]
+                }
+                send_alert_email(request_data, 1, 0, 1)  # Assume DNN=1, CART=0 for now
+                time.sleep(60)  # avoid spamming alerts every second
+            else:
+                print("✅ No malicious traffic found.")
+
+            conn.close()
+        except Exception as e:
+            print(f"❌ Error in monitor loop: {str(e)}")
+
+        time.sleep(15)  # check every 15 seconds
 
 
 
