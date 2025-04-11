@@ -561,69 +561,6 @@ Suggested Action: Check firewall and restrict repeated offenders.
     except Exception as e:
         print(f"❌ Failed to send alert email. Error: {str(e)}")
 
-from flask import Flask, jsonify
-import psycopg2
-
-app = Flask(__name__)
-
-
-# ✅ Get Legit Users (status = 0)
-@app.route("/legit-users", methods=["GET"])
-def get_legit_users():
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT ip, timestamp, city, user_agent
-            FROM traffic_logs
-            WHERE status = 0
-            ORDER BY timestamp DESC
-            LIMIT 100;
-        """)
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-
-        return jsonify([
-            {
-                "ip": row[0],
-                "time": row[1].strftime("%Y-%m-%d %H:%M:%S"),
-                "city": row[2],
-                "user_agent": row[3]
-            } for row in rows
-        ])
-    except Exception as e:
-        print("Error fetching legit users:", e)
-        return jsonify({"error": "Failed to fetch legit users"}), 500
-
-# ❌ Get Attackers (status = 1)
-@app.route("/attackers", methods=["GET"])
-def get_attackers():
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT ip, timestamp, city, user_agent
-            FROM traffic_logs
-            WHERE status = 1
-            ORDER BY timestamp DESC
-            LIMIT 100;
-        """)
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-
-        return jsonify([
-            {
-                "ip": row[0],
-                "time": row[1].strftime("%Y-%m-%d %H:%M:%S"),
-                "city": row[2],
-                "user_agent": row[3]
-            } for row in rows
-        ])
-    except Exception as e:
-        print("Error fetching attackers:", e)
-        return jsonify({"error": "Failed to fetch attackers"}), 500
 
 
 if __name__ == "__main__":
