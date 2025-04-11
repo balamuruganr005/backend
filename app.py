@@ -11,6 +11,7 @@ import numpy as np
 import requests
 import os
 import joblib
+from geolit2 import geolite2
 
 app = Flask(__name__)
 
@@ -400,21 +401,41 @@ import os
 import joblib
 import requests
 
-# Google Drive direct download link (replace with your actual file ID)
-MODEL_URL = "https://drive.google.com/uc?id=1Zd9GOeDeFuYAwBpj0cIBVA2Z8LwiaAIl"
-MODEL_FILENAME = "dnn_model.pkl"
-model_path = os.path.join(os.path.dirname(__file__), MODEL_FILENAME)
+def download_from_gdrive(file_id, destination):
+    print("[Model] Downloading model from Google Drive...")
+    URL = "https://drive.google.com/uc?export=download"
 
-# Step 1: Download model if not present
-if not os.path.exists(model_path):
-    print("[Model] dnn_model.pkl not found. Downloading from Google Drive...")
+    session = requests.Session()
+    response = session.get(URL, params={'id': file_id}, stream=True)
+
+    # Handling virus scan confirmation warning
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            response = session.get(URL, params={'id': file_id, 'confirm': value}, stream=True)
+
     try:
-        response = requests.get(MODEL_URL)
-        with open(model_path, "wb") as f:
-            f.write(response.content)
-        print("[Model Download] Successfully downloaded DNN model ✅")
+        with open(destination, "wb") as f:
+            for chunk in response.iter_content(32768):
+                if chunk:
+                    f.write(chunk)
+        print("[Model Download] Success ✅")
     except Exception as e:
-        print(f"[Model Download Error] Failed to download model: {e}")
+        print(f"[Model Download Error] {e}")
+
+# Use the function
+file_id = "1Zd9GOeDeFuYAwBpj0cIBVA2Z8LwiaAIl"
+model_path = os.path.join(os.path.dirname(__file__), "dnn_model.pkl")
+
+if not os.path.exists(model_path):
+    download_from_gdrive(file_id, model_path)
+
+try:
+    dnn_model = joblib.load(model_path)
+    print("[Model Load] DNN model loaded successfully ✅")
+except Exception as e:
+    print(f"[Model Load Error] Could not load DNN model: {e}")
+    dnn_model = None
+
 
 # Step 2: Load the DNN model
 try:
