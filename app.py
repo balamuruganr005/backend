@@ -641,6 +641,12 @@ def monitor_ddos_alerts():
 
         time.sleep(15)  # check every 15 seconds
 
+if __name__ == '__main__':
+    # Start background thread for monitoring DDoS
+    threading.Thread(target=monitor_ddos_alerts, daemon=True).start()
+    
+    # Start Flask app
+    app.run(debug=True)
 
 
 if __name__ == "__main__":
