@@ -402,30 +402,166 @@ try:
 except Exception as e:
     print(f"[Model Load Error] Could not load DNN model: {e}")
     dnn_model = None
+    
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import StandardScaler
+
+# Load DNN model
+def load_dnn_model():
+    return joblib.load("dnn_model.pkl")
+
+dnn_model = load_dnn_model()
+
+# Fetch recent traffic logs from DB for retraining
+def fetch_recent_traffic():
+    conn = psycopg2.connect(DATABASE_URL)
+    query = """
+    SELECT * FROM traffic_logs
+    WHERE status IS NOT NULL
+    ORDER BY timestamp DESC
+    LIMIT 1000;
+    """
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+    return df
+
+# Preprocess features
+def preprocess(df):
+    X = df[[
+        'request_size', 'status', 'destination_port',
+        'high_request_rate', 'large_payload', 'spike_in_requests',
+        'repeated_access', 'unusual_user_agent', 'invalid_headers', 'small_payload'
+    ]]
+    y = df['status']  # status should be 0 (legit) or 1 (bad)
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    return X_scaled, y
+
+# Retrain DNN and save model
+def retrain_dnn_model():
+    df = fetch_recent_traffic()
+    X, y = preprocess(df)
+    model = MLPClassifier(hidden_layer_sizes=(64, 32), max_iter=500)
+    model.fit(X, y)
+    joblib.dump(model, "dnn_model.pkl")
+    return "DNN model retrained with new traffic patterns."
+
+# Rule-based detection
+def violates_rules(log):
+    return any([
+        log.get('high_request_rate', False),
+        log.get('large_payload', False),
+        log.get('spike_in_requests', False),
+        log.get('invalid_headers', False),
+        log.get('unusual_user_agent', False),
+        log.get('repeated_access', False),
+    ])
+
+# Whitelist legit users
+def prioritize_legit_users():
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute("SELECT ip FROM traffic_logs WHERE status = 0")
+    legit_ips = cur.fetchall()
+    conn.close()
+
+    with open("whitelist.txt", "w") as f:
+        for ip in legit_ips:
+            f.write(f"{ip[0]}\n")  # Store or sync to firewall allowlist
+
+from flask import jsonify
+import smtplib
+from email.mime.text import MIMEText
+from datetime import datetime
+
+@app.route('/monitor')
+def monitor_traffic():
+    df = fetch_recent_traffic()
+    X, _ = preprocess(df)
+    model = load_dnn_model()
+    preds = model.predict(X)
+
+    # Count DDoS pattern matches
+    ddos_count = sum(preds)
+    if ddos_count > 5:  # adjustable threshold
+        top_attackers = df[df['status'] == 1]['ip'].value_counts().head(5)
+        alert_details = {
+            "time": str(datetime.now()),
+            "top_attackers": top_attackers.to_dict(),
+            "ddos_count": int(ddos_count),
+            "message": "🚨 DDoS Attack Detected!",
+        }
+
+        # Save alert in DB and send email
+        save_alert_to_db(alert_details)
+        send_alert_email(alert_details)
+        return jsonify({"ddos": True, "details": alert_details})
+
+    return jsonify({"ddos": False, "message": "No DDoS activity"})
+
+def save_alert_to_db(alert_data):
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    # Create table if not exists (optional safeguard)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS alerts (
+        id SERIAL PRIMARY KEY,
+        time TIMESTAMP,
+        top_attackers TEXT,
+        ddos_count INTEGER,
+        message TEXT
+    );
+    """)
+
+    cur.execute("""
+        INSERT INTO alerts (time, top_attackers, ddos_count, message)
+        VALUES (%s, %s, %s, %s)
+    """, (
+        alert_data['time'],
+        str(alert_data['top_attackers']),  # Store IPs as stringified dict
+        alert_data['ddos_count'],
+        alert_data['message']
+    ))
+
+    conn.commit()
+    conn.close()
+    print("✅ Alert saved to database successfully.")
 
 
-@app.route('/predict', methods=['POST'])
-def predict():
+import smtplib
+from email.mime.text import MIMEText
+
+def send_alert_email(data):
+    msg_content = f"""
+🚨 DDoS Alert: {data['message']}
+Time: {data['time']}
+Detected Attacker IPs: {data['top_attackers']}
+Total Malicious Requests: {data['ddos_count']}
+Suggested Action: Check firewall and restrict repeated offenders.
+    """
+    msg = MIMEText(msg_content)
+    msg['Subject'] = '🚨 DDoS Detected on Your Website'
+    msg['From'] = 'iambalamurugan005@gmail.com'
+    msg['To'] = 'iambalamurugan05@gmail.com'
+
+    # Email config
+    smtp_server = 'smtp.gmail.com'
+    smtp_port = 587
+    from_email = "iambalamurugan005@gmail.com"
+    to_email = "iambalamurugan05@gmail.com"
+    app_password = "tsdryornazoifbcl"  # ✅ Direct password (Gmail App Password)
+
     try:
-        data = request.get_json()
-        features = np.array([list(data.values())])  # Make sure order matches training
-        prediction = dnn_model.predict(features)[0]
-        return jsonify({'prediction': int(prediction)})
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(from_email, app_password)
+            server.sendmail(from_email, to_email, msg.as_string())
+            print("✅ DDoS alert email sent successfully!")
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"❌ Failed to send alert email. Error: {str(e)}")
 
-# Basic health check
-@app.route("/health", methods=["GET"])
-def health_check():
-    return jsonify({"status": "Backend is running fine ✅"})
 
-@app.route('/retrain-dnn', methods=['POST'])
-def retrain_dnn():
-    try:
-        # logic to retrain and save model as dnn_model.pkl
-        return jsonify({"message": "Model retrained successfully ✅"})
-    except Exception as e:
-        return jsonify({"error": str(e)})
 
 
 if __name__ == "__main__":
