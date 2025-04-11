@@ -396,83 +396,37 @@ def dnn_stats():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Load your DNN model and preprocessor (if any)
-dnn_model = joblib.load('dnn_model.pkl')
-# Load your DNN model and optional preprocessor
+# Load your DNN model for predictions
 try:
-    dnn_model = joblib.load('dnn_model.pkl')
+    dnn_model = joblib.load("dnn_model.pkl")
 except Exception as e:
-    print(f"Error loading DNN model: {e}")
+    print(f"[Model Load Error] Could not load DNN model: {e}")
     dnn_model = None
 
-try:
-    dnn_preprocessor = joblib.load('dnn_preprocessor.pkl')
-except:
-    dnn_preprocessor = None
-
-@app.route('/predict-dnn', methods=['POST'])
-def predict_dnn():
-    if not dnn_model:
-        return jsonify({'error': 'DNN model not loaded'}), 500
-
-    data = request.get_json()
-
-    # Define expected features in exact model input order
-    feature_keys = [
-        'request_size', 'destination_port', 'high_request_rate', 'large_payload',
-        'spike_in_requests', 'repeated_access', 'unusual_user_agent',
-        'invalid_headers', 'small_payload'
-    ]
-
-    # Check if all features are present
+@app.route("/predict", methods=["POST"])
+def predict_traffic():
     try:
-        features = [data[key] for key in feature_keys]
-    except KeyError as e:
-        return jsonify({'error': f'Missing feature: {str(e)}'}), 400
+        data = request.json
+        features = np.array(data.get("features")).reshape(1, -1)
 
-    # Convert to numpy and optionally preprocess
-    X = np.array([features])
-    if dnn_preprocessor:
-        try:
-            X = dnn_preprocessor.transform(X)
-        except Exception as e:
-            return jsonify({'error': f'Preprocessing failed: {str(e)}'}), 500
+        if not dnn_model:
+            return jsonify({"error": "DNN model not loaded"}), 500
 
-    # Predict
-    try:
-        prediction = dnn_model.predict(X)[0]
-        confidence = max(dnn_model.predict_proba(X)[0])
+        prediction = dnn_model.predict(features)[0]
+        probability = dnn_model.predict_proba(features)[0].tolist()
+
+        return jsonify({
+            "prediction": int(prediction),
+            "probability": probability
+        })
+
     except Exception as e:
-        return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
+        return jsonify({"error": str(e)}), 500
 
-    # Log to database
-    try:
-        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO traffic_logs (ip, timestamp, request_size, destination_port, dnn_prediction, confidence)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """, (
-            data.get("ip", "0.0.0.0"),
-            datetime.utcnow(),
-            data["request_size"],
-            data["destination_port"],
-            int(prediction),
-            round(float(confidence), 3)
-        ))
-        conn.commit()
-        cur.close()
-        conn.close()
-    except Exception as e:
-        print("DB insert failed:", e)
-
-    # Respond
-    return jsonify({
-        "prediction": int(prediction),
-        "confidence": round(float(confidence), 3),
-        "message": "Malicious" if prediction == 1 else "Legitimate"
-    })
-
+# Basic health check
+@app.route("/health", methods=["GET"])
+def health_check():
+    return jsonify({"status": "Backend is running fine ✅"})
 
 
 
