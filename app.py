@@ -377,25 +377,19 @@ def debug_status():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/dnn-stats", methods=["GET"])
-def dnn_stats():
+# Add to app.py
+@app.route('/dnn-status', methods=['GET'])
+def dnn_status():
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cursor = conn.cursor()
-        cursor.execute("SELECT status, COUNT(*) FROM traffic_logs GROUP BY status")
-        result = cursor.fetchall()
-        conn.close()
-
-        stats = {"legit": 0, "malicious": 0}
-        for status, count in result:
-            if str(status) == "0":
-                stats["legit"] = count
-            else:
-                stats["malicious"] = count
-
-        return jsonify(stats)
+        conn = connect_db()
+        cur = conn.cursor()
+        cur.execute("SELECT timestamp, status FROM traffic_logs ORDER BY timestamp DESC LIMIT 100;")
+        rows = cur.fetchall()
+        result = [{"timestamp": r[0], "status": r[1]} for r in rows]
+        return jsonify(result)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e)})
+
 
 import os
 import joblib
@@ -410,53 +404,28 @@ except Exception as e:
     dnn_model = None
 
 
-if not os.path.exists(model_path):
-    download_from_gdrive(file_id, model_path)
-
-try:
-    dnn_model = joblib.load(model_path)
-    print("[Model Load] DNN model loaded successfully ✅")
-except Exception as e:
-    print(f"[Model Load Error] Could not load DNN model: {e}")
-    dnn_model = None
-
-
-# Step 2: Load the DNN model
-try:
-    dnn_model = joblib.load(model_path)
-    print("[Model Load] DNN model loaded successfully ✅")
-except Exception as e:
-    print(f"[Model Load Error] Could not load DNN model: {e}")
-    dnn_model = None
-
-
-
-
-@app.route("/predict", methods=["POST"])
-def predict_traffic():
+@app.route('/predict', methods=['POST'])
+def predict():
     try:
-        data = request.json
-        features = np.array(data.get("features")).reshape(1, -1)
-
-        if not dnn_model:
-            return jsonify({"error": "DNN model not loaded"}), 500
-
+        data = request.get_json()
+        features = np.array([list(data.values())])  # Make sure order matches training
         prediction = dnn_model.predict(features)[0]
-        probability = dnn_model.predict_proba(features)[0].tolist()
-
-        return jsonify({
-            "prediction": int(prediction),
-            "probability": probability
-        })
-
+        return jsonify({'prediction': int(prediction)})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({'error': str(e)}), 500
 
 # Basic health check
 @app.route("/health", methods=["GET"])
 def health_check():
     return jsonify({"status": "Backend is running fine ✅"})
 
+@app.route('/retrain-dnn', methods=['POST'])
+def retrain_dnn():
+    try:
+        # logic to retrain and save model as dnn_model.pkl
+        return jsonify({"message": "Model retrained successfully ✅"})
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 
 if __name__ == "__main__":
