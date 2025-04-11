@@ -399,32 +399,16 @@ def dnn_stats():
 
 import os
 import joblib
-import requests
 
-def download_from_gdrive(file_id, destination):
-    print("[Model] Downloading model from Google Drive...")
-    URL = "https://drive.google.com/uc?export=download"
-
-    session = requests.Session()
-    response = session.get(URL, params={'id': file_id}, stream=True)
-
-    # Handling virus scan confirmation warning
-    for key, value in response.cookies.items():
-        if key.startswith('download_warning'):
-            response = session.get(URL, params={'id': file_id, 'confirm': value}, stream=True)
-
-    try:
-        with open(destination, "wb") as f:
-            for chunk in response.iter_content(32768):
-                if chunk:
-                    f.write(chunk)
-        print("[Model Download] Success ✅")
-    except Exception as e:
-        print(f"[Model Download Error] {e}")
-
-# Use the function
-file_id = "1Zd9GOeDeFuYAwBpj0cIBVA2Z8LwiaAIl"
 model_path = os.path.join(os.path.dirname(__file__), "dnn_model.pkl")
+
+try:
+    dnn_model = joblib.load(model_path)
+    print("[Model Load] DNN model loaded successfully ✅")
+except Exception as e:
+    print(f"[Model Load Error] Could not load DNN model: {e}")
+    dnn_model = None
+
 
 if not os.path.exists(model_path):
     download_from_gdrive(file_id, model_path)
