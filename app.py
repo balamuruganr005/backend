@@ -398,39 +398,54 @@ def dnn_stats():
 
 # Load your DNN model and preprocessor (if any)
 dnn_model = joblib.load('dnn_model.pkl')
+# Load your DNN model and optional preprocessor
+try:
+    dnn_model = joblib.load('dnn_model.pkl')
+except Exception as e:
+    print(f"Error loading DNN model: {e}")
+    dnn_model = None
+
 try:
     dnn_preprocessor = joblib.load('dnn_preprocessor.pkl')
 except:
     dnn_preprocessor = None
 
-# Define route
 @app.route('/predict-dnn', methods=['POST'])
 def predict_dnn():
+    if not dnn_model:
+        return jsonify({'error': 'DNN model not loaded'}), 500
+
     data = request.get_json()
 
-    # Define feature order expected by the model
+    # Define expected features in exact model input order
     feature_keys = [
         'request_size', 'destination_port', 'high_request_rate', 'large_payload',
         'spike_in_requests', 'repeated_access', 'unusual_user_agent',
         'invalid_headers', 'small_payload'
     ]
 
-    # Convert to feature array
+    # Check if all features are present
     try:
         features = [data[key] for key in feature_keys]
     except KeyError as e:
         return jsonify({'error': f'Missing feature: {str(e)}'}), 400
 
-    # Apply preprocessing if needed
+    # Convert to numpy and optionally preprocess
     X = np.array([features])
     if dnn_preprocessor:
-        X = dnn_preprocessor.transform(X)
+        try:
+            X = dnn_preprocessor.transform(X)
+        except Exception as e:
+            return jsonify({'error': f'Preprocessing failed: {str(e)}'}), 500
 
-    # Make prediction
-    prediction = dnn_model.predict(X)[0]
-    confidence = max(dnn_model.predict_proba(X)[0])
+    # Predict
+    try:
+        prediction = dnn_model.predict(X)[0]
+        confidence = max(dnn_model.predict_proba(X)[0])
+    except Exception as e:
+        return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
 
-    # Optional: insert result into PostgreSQL
+    # Log to database
     try:
         conn = psycopg2.connect(DATABASE_URL, sslmode='require')
         cur = conn.cursor()
@@ -451,13 +466,13 @@ def predict_dnn():
     except Exception as e:
         print("DB insert failed:", e)
 
-    # Send response
-    result = {
-        "prediction": int(prediction),   # 1 = malicious, 0 = legit
+    # Respond
+    return jsonify({
+        "prediction": int(prediction),
         "confidence": round(float(confidence), 3),
         "message": "Malicious" if prediction == 1 else "Legitimate"
-    }
-    return jsonify(result)
+    })
+
 
 
 
