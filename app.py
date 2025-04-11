@@ -396,12 +396,20 @@ def dnn_stats():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+import os
+import joblib
+
+# Construct the correct path to your model file
+model_path = os.path.join(os.path.dirname(__file__), "dnn_model.pkl")  # or "models/dnn_model.pkl" if it's in a subfolder
+
 # Load your DNN model for predictions
 try:
-    dnn_model = joblib.load("dnn_model.pkl")
+    dnn_model = joblib.load(model_path)
+    print("[Model Load] DNN model loaded successfully ✅")
 except Exception as e:
     print(f"[Model Load Error] Could not load DNN model: {e}")
     dnn_model = None
+
 
 @app.route("/predict", methods=["POST"])
 def predict_traffic():
