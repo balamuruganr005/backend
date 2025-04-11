@@ -399,19 +399,20 @@ def dnn_stats():
 import os
 import joblib
 
-# Path to your model file
+# Absolute path to dnn_model.pkl
 model_path = os.path.join(os.path.dirname(__file__), "dnn_model.pkl")
 
-if not os.path.exists(model_path):
-    print(f"[Model Load Error] Model file not found at: {model_path}")
+try:
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model file not found at {model_path}")
+    
+    dnn_model = joblib.load(model_path)
+    print("[Model Load] DNN model loaded successfully ✅")
+
+except Exception as e:
+    print(f"[Model Load Error] Could not load DNN model: {e}")
     dnn_model = None
-else:
-    try:
-        dnn_model = joblib.load(model_path)
-        print("[Model Load] DNN model loaded successfully ✅")
-    except Exception as e:
-        print(f"[Model Load Error] Could not load DNN model: {e}")
-        dnn_model = None
+
 
 
 @app.route("/predict", methods=["POST"])
