@@ -7,4 +7,3 @@ matplotlib
 requests
 psycopg2
 joblib
-geolite2
