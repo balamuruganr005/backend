@@ -408,11 +408,7 @@ TO_EMAIL = "iambalamurugan05@gmail.com"
 EMAIL_PASS = "tsdryornazoifbcl"
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "dnn_model.pkl")
 
-# Initialize Flask App
-app = Flask(__name__)
 
-# Updated CORS configuration
-CORS(app, origins=["http://localhost:5173", "https://ddosweb.vercel.app"])
 
 # DB setup
 def get_db_connection():
