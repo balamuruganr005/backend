@@ -308,35 +308,39 @@ def insert_traffic_data():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
-    """Detects unusual spikes in request rate and groups anomalies by IP"""
-    c.execute("SELECT ip, timestamp FROM traffic_logs")
-    records = c.fetchall()
+    try:
+        # Time window: last 60 seconds
+        time_threshold = time.time() - 60
 
-    if len(records) < 5:  # Not enough data for anomaly detection
-        return jsonify({"message": "Not enough data for anomaly detection"})
+        # Get number of requests per IP in the last 60 seconds
+        c.execute("""
+            SELECT ip, COUNT(*) as request_count
+            FROM traffic_logs
+            WHERE timestamp > %s
+            GROUP BY ip
+            ORDER BY request_count DESC
+        """, (time_threshold,))
+        rows = c.fetchall()
 
-    ip_data = {}  # Group requests by IP
-    for ip, timestamp in records:
-        if ip not in ip_data:
-            ip_data[ip] = []
-        ip_data[ip].append(timestamp)
+        anomalies = []
+        for ip, count in rows:
+            if count > 100:  # 👈 Set your own threshold here
+                anomalies.append({
+                    "ip": ip,
+                    "request_count": count,
+                    "status": "anomaly detected"
+                })
 
-    anomalies_by_ip = {}
-    for ip, timestamps in ip_data.items():
-        if len(timestamps) >= 3:  # Rule: IP repeated 3 or more times is suspicious
-            anomalies_by_ip[ip] = "Repeated IP detected"
+        return jsonify({
+            "anomalies": anomalies,
+            "message": f"Detected {len(anomalies)} anomalies."
+        }), 200
 
-    # Add all malicious IPs to anomalies
-    for ip in MALICIOUS_IPS:
-        anomalies_by_ip[ip] = "Malicious IP detected"
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    return jsonify({
-        "anomalies_by_ip": anomalies_by_ip,
-        "total_ips_with_anomalies": len(anomalies_by_ip)
-    })
 
 @app.route('/traffic-summary', methods=['GET'])
 def traffic_summary():
@@ -524,31 +528,40 @@ def prioritize_legit_users():
 
 @app.route("/detect-dnn", methods=["POST"])
 def detect_dnn():
-    data = request.get_json()
-    ip = data.get("ip", "unknown")
-    features = preprocess(data)  # Use the defined preprocess function
+    try:
+        now = time.time()
+        c.execute("SELECT * FROM traffic_logs WHERE trust_score = 1 AND timestamp > %s", (now - 20,))
+        attackers = c.fetchall()
 
-    prediction = dnn_model.predict(features)[0]
+        if attackers:
+            subject = "🚨 DDoS Attack Detected!"
+            body = f"{len(attackers)} malicious or suspicious users detected.\n\nDetails:\n"
+            for attacker in attackers:
+                body += f"IP: {attacker[2]}, Location: {attacker[3]}, UA: {attacker[4]}\n"
 
-    # Combine rule violation AND prediction
-    if prediction == 1 and violates_rules(data):
-        # Block IP
-        blocklist.add(ip)
+            # Send email
+            send_email(subject, body)
 
-        # Store alert in DB
-        alert_msg = f"DNN detected DDoS attack from IP: {ip}"
-        cursor.execute("""
-            INSERT INTO alerts (ip, message, dnn_prediction)
-            VALUES (%s, %s, %s)
-        """, (ip, alert_msg, prediction))
-        conn.commit()
+            # Save alert in alerts table
+            for attacker in attackers:
+                ip = attacker[2]
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                message = "Suspicious activity detected from IP."
+                dnn_prediction = attacker[6]  # Assuming trust_score is used
+                image = "ddos_pattern.jpg"  # Optional, add actual image generation if needed
 
-        # Send email
-        send_alert_email(ip, prediction, data)
+                c.execute(
+                    "INSERT INTO alerts (ip, timestamp, message, dnn_prediction, image) VALUES (%s, %s, %s, %s, %s)",
+                    (ip, timestamp, message, dnn_prediction, image)
+                )
+            conn.commit()
 
-        return jsonify({"status": "blocked", "prediction": int(prediction), "message": alert_msg})
-    
-    return jsonify({"status": "allowed", "prediction": int(prediction)})
+        return jsonify({"status": "checked", "attackers_found": len(attackers)})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 
 @app.route("/alert-history", methods=["GET"])
 def get_alert_history():
