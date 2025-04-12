@@ -402,107 +402,105 @@ def dnn_status():
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)})
-with open("dnn_model.pkl", "rb") as f:
-    dnn_model = joblib.load(f)  # Ensure to load using joblib since it’s a sklearn model
 
-# Add your 18 DNN feature list here
-DNN_FEATURES = ['feature1', 'feature2', 'feature3', ..., 'feature18']  # Replace with your actual feature names
+# Flask email configuration
+app.config['MAIL_USERNAME'] = 'iambalamurugan005@gmail.com'  # Sender's email address
+app.config['MAIL_PASSWORD'] = 'tsdryornazoifbcl'  # App password
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'  # Gmail SMTP server
+app.config['MAIL_PORT'] = 587  # SMTP port for TLS
+app.config['MAIL_USE_TLS'] = True  # Use TLS for security
+mail = Mail(app)
 
-# Configs for PostgreSQL and Email
-engine = create_engine("postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci")
+# Initialize DNN model
+model = joblib.load('dnn_model.pkl')  # Load your DNN model
 
-EMAIL_FROM = "iambalamurugna005@gmail.com"
-EMAIL_TO = "iambalamurugan05@gmail.com"
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-SMTP_USERNAME = "iambalamurugna005@gmail.com"
-SMTP_PASSWORD = "tsdryornazoifbcl"
+# PostgreSQL connection string
+DATABASE_URL = "postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci"
 
-# Function to send email alert
-def send_email_alert(alert_rows):
-    subject = "⚠️ DDoS Alert Triggered!"
-    body = "🚨 The following suspicious/malicious traffic has been detected:\n\n"
-    for row in alert_rows:
-        body += f"IP: {row['ip']} | Port: {row['destination_port']} | Size: {row['request_size']} | Status: {row['status']}\n"
+# Function to connect to PostgreSQL using the URL
+def connect_db():
+    parsed_url = urlparse(DATABASE_URL)
+    conn = psycopg2.connect(
+        database=parsed_url.path[1:],  # Removing the leading '/' from the database name
+        user=parsed_url.username,
+        password=parsed_url.password,
+        host=parsed_url.hostname,
+        port=parsed_url.port
+    )
+    return conn
 
-    body += "\nPlease investigate immediately.\n— Team 7 DDoS Monitor"
-    msg = MIMEText(body)
-    msg['Subject'] = subject
-    msg['From'] = EMAIL_FROM
-    msg['To'] = EMAIL_TO
-
+# Function to send email alerts
+def send_alert_email(subject, body):
+    msg = Message(subject,
+                  sender='iambalamurugan005@gmail.com',
+                  recipients=['iambalamurugan05@gmail.com'])
+    msg.body = body
     try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.send_message(msg)
-            print("[✅] Email alert sent.")
+        mail.send(msg)
+        print("Email sent successfully!")
     except Exception as e:
-        print("[❌] Failed to send email:", e)
+        print(f"Error sending email: {e}")
 
-# Handle missing or "unknown" values
-def handle_missing_values(row):
-    for feature in DNN_FEATURES:
-        if pd.isna(row[feature]):  # Check for NaN or missing data
-            row[feature] = 0  # Or use a default value (e.g., 0 or the mean)
-    return row
+# Function to fetch traffic data
+def get_traffic_data():
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM traffic_data WHERE timestamp > %s", (datetime.now() - timedelta(minutes=15),))
+    data = cursor.fetchall()
+    conn.close()
+    return data
 
-# Analyze traffic with DNN and rule-based checks
-def analyze_traffic_with_rules_and_dnn(df):
-    suspicious_rows = []
+# DNN-based traffic analysis
+def analyze_traffic(data):
+    predictions = model.predict(data)
+    return predictions
+
+# Detect malicious traffic and trigger alert
+@app.route('/detect-dnn', methods=['POST'])
+def detect_dnn():
+    traffic_data = get_traffic_data()
     
-    for _, row in df.iterrows():
-        # Handle missing data in the row
-        row = handle_missing_values(row)
+    # Format the traffic data to match the model input
+    # Example: Assuming your model uses the traffic data as features in an array
+    features = [data[1:] for data in traffic_data]  # Skip timestamp or any unnecessary columns
+    
+    # Analyze traffic
+    predictions = analyze_traffic(features)
+    
+    # Check for malicious traffic
+    malicious_entries = [traffic_data[i] for i, pred in enumerate(predictions) if pred == 1]
+    
+    if malicious_entries:
+        # Send email alert if malicious traffic is detected
+        send_alert_email("DDoS Detected", "Malicious traffic detected in your system. Take necessary actions.")
+        return jsonify({"status": "malicious traffic detected", "data": malicious_entries}), 200
+    
+    return jsonify({"status": "no malicious traffic detected"}), 200
 
-        rule_violated = (
-            row.get("high_request_rate", 0) == 1 or
-            row.get("large_payload", 0) == 1 or
-            row.get("spike_in_requests", 0) == 1 or
-            row.get("repeated_access", 0) == 1 or
-            row.get("unusual_user_agent", 0) == 1 or
-            row.get("invalid_headers", 0) == 1
-        )
+# Route to get traffic data
+@app.route('/traffic-data', methods=['GET'])
+def traffic_data():
+    data = get_traffic_data()
+    return jsonify(data), 200
 
-        # Predict with DNN model
-        try:
-            dnn_input = row[DNN_FEATURES].values.reshape(1, -1)  # Reshape to match model input format
-            prediction = dnn_model.predict(dnn_input)[0]  # Get single prediction value
-        except Exception as e:
-            print("[❌] DNN Prediction failed:", e)
-            prediction = 0
+# Route to view alert history
+@app.route('/alert-history', methods=['GET'])
+def alert_history():
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM alerts ORDER BY timestamp DESC")
+    alerts = cursor.fetchall()
+    conn.close()
+    return jsonify(alerts), 200
 
-        if rule_violated or prediction == 1:
-            suspicious_rows.append(row)
-
-    return suspicious_rows
-
-# Monitor DDoS and send alerts
-def monitor_ddos_and_alert():
-    while True:
-        time.sleep(15)  # Run the check every 15 seconds
-        with engine.connect() as conn:
-            result = conn.execute(text("SELECT * FROM traffic_data")).mappings().all()
-            if not result:
-                print("[ℹ️] No traffic data yet.")
-                continue
-
-            df = pd.DataFrame(result)
-            suspicious = analyze_traffic_with_rules_and_dnn(df)
-
-            if suspicious:
-                print(f"[⚠️] Found {len(suspicious)} suspicious entries.")
-                send_email_alert(suspicious)
-            else:
-                print("[✅] No suspicious or malicious traffic detected.")
-
-# Start alert monitoring in a separate thread
-@app.before_first_request
-def start_alert_monitor():
-    thread = Thread(target=monitor_ddos_and_alert)
-    thread.daemon = True
-    thread.start()
+# Function to insert alerts into the database
+def insert_alert(message):
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO alerts (message, timestamp) VALUES (%s, %s)", (message, datetime.now()))
+    conn.commit()
+    conn.close()
 
 # Run the Flask app
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
