@@ -404,7 +404,7 @@ def dnn_status():
 import pickle
 import numpy as np
 
-model = pickle.load(open("dnn_model.pkl", "rb"))
+model = joblib.load("dnn_model.pkl")
 sample_input = np.random.rand(1, 18)  # Replace with real format
 prediction = model.predict(sample_input)
 print("Prediction:", prediction)
