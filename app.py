@@ -522,22 +522,34 @@ def prioritize_legit_users():
         for ip in ips:
             f.write(f"{ip[0]}\n")
 
-# --- Routes ---
 @app.route("/detect-dnn", methods=["POST"])
 def detect_dnn():
     data = request.get_json()
-    ip, features = data.get("ip", "unknown"), preprocess(data)
+    ip = data.get("ip", "unknown")
+    features = preprocess_request_data(data)
+
     prediction = dnn_model.predict(features)[0]
 
-    if prediction == 1:
+    # 🔐 Combine rule violation AND prediction
+    if prediction == 1 and violates_rules(data):
+        # Block IP
         blocklist.add(ip)
-        msg = f"DNN detected attack from IP: {ip}"
-        cur.execute("INSERT INTO alerts (ip, message, dnn_prediction) VALUES (%s, %s, %s)", (ip, msg, prediction))
+
+        # Store alert in DB
+        alert_msg = f"DNN detected DDoS attack from IP: {ip}"
+        cursor.execute("""
+            INSERT INTO alerts (ip, message, dnn_prediction)
+            VALUES (%s, %s, %s)
+        """, (ip, alert_msg, prediction))
         conn.commit()
+
+        # Send email
         send_alert_email(ip, prediction, data)
-        return jsonify({"status": "blocked", "prediction": int(prediction), "message": msg})
+
+        return jsonify({"status": "blocked", "prediction": int(prediction), "message": alert_msg})
     
     return jsonify({"status": "allowed", "prediction": int(prediction)})
+
 
 @app.route("/alert-history", methods=["GET"])
 def get_alert_history():
