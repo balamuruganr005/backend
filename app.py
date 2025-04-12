@@ -526,11 +526,11 @@ def prioritize_legit_users():
 def detect_dnn():
     data = request.get_json()
     ip = data.get("ip", "unknown")
-    features = preprocess_request_data(data)
+    features = preprocess(data)  # Use the defined preprocess function
 
     prediction = dnn_model.predict(features)[0]
 
-    # 🔐 Combine rule violation AND prediction
+    # Combine rule violation AND prediction
     if prediction == 1 and violates_rules(data):
         # Block IP
         blocklist.add(ip)
@@ -550,7 +550,6 @@ def detect_dnn():
     
     return jsonify({"status": "allowed", "prediction": int(prediction)})
 
-
 @app.route("/alert-history", methods=["GET"])
 def get_alert_history():
     cur.execute("SELECT ip, timestamp, message, dnn_prediction FROM alerts ORDER BY timestamp DESC LIMIT 50;")
@@ -559,6 +558,7 @@ def get_alert_history():
         "ip": row[0], "timestamp": row[1].strftime("%Y-%m-%d %H:%M:%S"),
         "message": row[2], "dnn_prediction": row[3]
     } for row in rows])
+
 
 @app.route('/test-email', methods=["GET"])
 def test_email():
