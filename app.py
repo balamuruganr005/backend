@@ -17,6 +17,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
+from threading import Thread
 
 
 app = Flask(__name__)
@@ -400,207 +401,104 @@ def dnn_status():
     except Exception as e:
         return jsonify({"error": str(e)})
 
+import pickle
+import numpy as np
+
+model = pickle.load(open("dnn_model.pkl", "rb"))
+sample_input = np.random.rand(1, 18)  # Replace with real format
+prediction = model.predict(sample_input)
+print("Prediction:", prediction)
 
 # Configs
-DATABASE_URL = "postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci"
-FROM_EMAIL = "iambalamurugan005@gmail.com"
-TO_EMAIL = "iambalamurugan05@gmail.com"
-EMAIL_PASS = "tsdryornazoifbcl"
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "dnn_model.pkl")
+engine = create_engine("postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci")
 
+# Email Setup
+EMAIL_FROM = "iambalamurugna005@gmail.com"
+EMAIL_TO = "iambalamurugan05@gmail.com"
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+SMTP_USERNAME = "iambalamurugna005@gmail.com"
+SMTP_PASSWORD = "tsdryornazoifbcl"
 
+# Load the trained DNN model
+with open("dnn_model.pkl", "rb") as f:
+    dnn_model = pickle.load(f)
 
-# DB setup
-def get_db_connection():
-    return psycopg2.connect(DATABASE_URL, sslmode='require')
+# Add your 18 DNN feature list here
+DNN_FEATURES = ['feature1', 'feature2', 'feature3', ..., 'feature18']  # Update with actual features
 
-# Load DNN model
-def load_dnn_model():
-    return joblib.load(MODEL_PATH)
+def send_email_alert(alert_rows):
+    subject = "⚠️ DDoS Alert Triggered!"
+    body = "🚨 The following suspicious/malicious traffic has been detected:\n\n"
 
-dnn_model = load_dnn_model()
+    for row in alert_rows:
+        body += f"IP: {row['ip']} | Port: {row['destination_port']} | Size: {row['request_size']} | Status: {row['status']}\n"
 
-# Fetch recent traffic logs from DB for retraining
-def fetch_recent_traffic():
-    conn = get_db_connection()
-    query = """
-    SELECT * FROM traffic_logs
-    WHERE status IS NOT NULL
-    ORDER BY timestamp DESC
-    LIMIT 1000;
-    """
-    df = pd.read_sql_query(query, conn)
-    conn.close()
-    return df
+    body += "\nPlease investigate immediately.\n— Team 7 DDoS Monitor"
 
-# Retrain DNN and save model
-def retrain_dnn_model():
-    df = fetch_recent_traffic()
-    X, y = preprocess(df)
-    model = MLPClassifier(hidden_layer_sizes=(64, 32), max_iter=500)
-    model.fit(X, y)
-    joblib.dump(model, MODEL_PATH)
-    return "DNN model retrained with new traffic patterns."
-
-# Preprocess traffic data
-def preprocess(df):
-    X = df[[ 
-        'request_size', 'status', 'destination_port', 
-        'high_request_rate', 'large_payload', 'spike_in_requests',
-        'repeated_access', 'unusual_user_agent', 'invalid_headers', 'small_payload'
-    ]]
-    y = df['status']  # status should be 0 (legit) or 1 (bad)
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    return X_scaled, y
-
-# Utility Functions
-def save_alert_to_db(ip, message, dnn_prediction):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    image = "ddos_pattern.jpg"  # Optional image placeholder, can be added if needed
-    cur.execute(
-        "INSERT INTO alerts (ip, timestamp, message, dnn_prediction, image) VALUES (%s, %s, %s, %s, %s)",
-        (ip, timestamp, message, dnn_prediction, image)
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def send_alert_email(ip, pred, data):
-    body = f"""⚠️ DDoS Alert!\nIP: {ip}\nPrediction: {pred}\nRequest: {data}"""
-    msg = MIMEMultipart()
-    msg['From'], msg['To'], msg['Subject'] = FROM_EMAIL, TO_EMAIL, "🚨 DDoS Alert"
-    msg.attach(MIMEText(body, 'plain'))
+    msg = MIMEText(body)
+    msg['Subject'] = subject
+    msg['From'] = EMAIL_FROM
+    msg['To'] = EMAIL_TO
 
     try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(FROM_EMAIL, EMAIL_PASS)
-        server.sendmail(FROM_EMAIL, TO_EMAIL, msg.as_string())
-        server.quit()
-        print("✅ Email sent.")
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
+            print("[✅] Email alert sent.")
     except Exception as e:
-        print("❌ Email failed:", e)
+        print("[❌] Failed to send email:", e)
 
-def prioritize_legit_users():
-    conn = get_db_connection()
-    with conn.cursor() as c:
-        c.execute("SELECT ip FROM traffic_logs WHERE status = 0")
-        ips = c.fetchall()
-    with open("whitelist.txt", "w") as f:
-        for ip in ips:
-            f.write(f"{ip[0]}\n")
+def analyze_traffic_with_rules_and_dnn(df):
+    suspicious_rows = []
 
-# Routes
-@app.route('/dnn-status', methods=['GET'])
-def dnn_status():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT timestamp, status FROM traffic_logs ORDER BY timestamp DESC LIMIT 100;")
-        rows = cur.fetchall()
-        result = [{"timestamp": r[0], "status": r[1]} for r in rows]
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)})
+    for _, row in df.iterrows():
+        rule_violated = (
+            row["high_request_rate"] == 1 or
+            row["large_payload"] == 1 or
+            row["spike_in_requests"] == 1 or
+            row["repeated_access"] == 1 or
+            row["unusual_user_agent"] == 1 or
+            row["invalid_headers"] == 1
+        )
 
-@app.route("/detect-dnn", methods=["POST"])
-def detect_dnn():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        now = time.time()
-        cur.execute("SELECT * FROM traffic_logs WHERE trust_score = 1 AND timestamp > %s", (now - 20,))
-        attackers = cur.fetchall()
-
-        if attackers:
-            subject = "🚨 DDoS Attack Detected!"
-            body = f"{len(attackers)} malicious or suspicious users detected.\n\nDetails:\n"
-            for attacker in attackers:
-                body += f"IP: {attacker[2]}, Location: {attacker[3]}, UA: {attacker[4]}\n"
-
-            # Send email
-            send_alert_email(subject, body)
-
-            # Save alert in alerts table
-            for attacker in attackers:
-                ip = attacker[2]
-                message = "Suspicious activity detected from IP."
-                dnn_prediction = attacker[6]  # Assuming trust_score is used
-                save_alert_to_db(ip, message, dnn_prediction)
-
-        return jsonify({"status": "checked", "attackers_found": len(attackers)})
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/alert-history", methods=["GET"])
-def get_alert_history():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT ip, timestamp, message, dnn_prediction FROM alerts ORDER BY timestamp DESC LIMIT 50;")
-    rows = cur.fetchall()
-    conn.close()
-    return jsonify([{
-        "ip": row[0], "timestamp": row[1].strftime("%Y-%m-%d %H:%M:%S"),
-        "message": row[2], "dnn_prediction": row[3]
-    } for row in rows])
-
-@app.route('/test-email', methods=["GET"])
-def test_email():
-    try:
-        # Test data (you can modify this to your specific case)
-        test_data = {
-            "ip": "123.123.123.123", 
-            "request_size": 500, 
-            "destination_port": 80,
-            "high_request_rate": 1, 
-            "large_payload": 1, 
-            "spike_in_requests": 1,
-            "repeated_access": 1, 
-            "unusual_user_agent": 1, 
-            "invalid_headers": 1,
-            "small_payload": 0
-        }
-
-        # Send the test email
-        send_alert_email(test_data['ip'], 1, test_data)
-
-        # Save the alert to the database so it shows in /alert-history
-        message = "Test DDoS alert sent via /test-email endpoint"
-        dnn_prediction = 1  # Let's assume 1 indicates bad traffic (DDoS)
-        save_alert_to_db(test_data['ip'], message, dnn_prediction)
-
-        return jsonify({"message": "✅ Test email sent and saved to alert history!"})
-
-    except Exception as e:
-        return jsonify({"error": str(e)})
-
-
-# --- Background DDoS Monitor ---
-def monitor_ddos():
-    while True:
+        # Predict with DNN model
         try:
-            conn = get_db_connection()
-            with conn.cursor() as cur:
-                cur.execute("SELECT * FROM traffic WHERE status = 1 ORDER BY timestamp DESC LIMIT 1;")
-                row = cur.fetchone()
-                if row:
-                    print("🚨 Malicious traffic found")
-                    req_data = {
-                        "ip": row[1], "request_size": row[2], "destination_port": row[3],
-                        "high_request_rate": row[4], "large_payload": row[5], "spike_in_requests": row[6],
-                        "repeated_access": row[7], "unusual_user_agent": row[8],
-                        "invalid_headers": row[9], "small_payload": row[10]
-                    }
-                    send_alert_email(req_data["ip"], 1, req_data)
-            conn.close()
+            dnn_input = row[DNN_FEATURES].values.reshape(1, -1)
+            prediction = dnn_model.predict(dnn_input)[0]
         except Exception as e:
-            print(f"❌ Monitor error: {e}")
+            print("[❌] DNN Prediction failed:", e)
+            prediction = 0
+
+        if rule_violated or prediction == 1:
+            suspicious_rows.append(row)
+
+    return suspicious_rows
+
+def monitor_ddos_and_alert():
+    while True:
         time.sleep(15)
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT * FROM traffic_data")).mappings().all()
+            if not result:
+                print("[ℹ️] No traffic data yet.")
+                continue
+
+            df = pd.DataFrame(result)
+            suspicious = analyze_traffic_with_rules_and_dnn(df)
+
+            if suspicious:
+                print(f"[⚠️] Found {len(suspicious)} suspicious entries.")
+                send_email_alert(suspicious)
+            else:
+                print("[✅] No suspicious or malicious traffic detected.")
+
+@app.before_first_request
+def start_alert_monitor():
+    thread = Thread(target=monitor_ddos_and_alert)
+    thread.daemon = True
+    thread.start()
 
 if __name__ == "__main__":
-    threading.Thread(target=monitor_ddos, daemon=True).start()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(debug=True)
