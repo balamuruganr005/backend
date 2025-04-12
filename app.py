@@ -450,202 +450,144 @@ def retrain_dnn_model():
     joblib.dump(model, "dnn_model.pkl")
     return "DNN model retrained with new traffic patterns."
 
-# Rule-based detection
-def violates_rules(log):
-    return any([
-        log.get('high_request_rate', False),
-        log.get('large_payload', False),
-        log.get('spike_in_requests', False),
-        log.get('invalid_headers', False),
-        log.get('unusual_user_agent', False),
-        log.get('repeated_access', False),
-    ])
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from collections import defaultdict
+import psycopg2, joblib, smtplib, threading, time
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-# Whitelist legit users
-def prioritize_legit_users():
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute("SELECT ip FROM traffic_logs WHERE status = 0")
-    legit_ips = cur.fetchall()
-    conn.close()
+# Configs
+#DATABASE_URL = "postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci"
+FROM_EMAIL = "iambalamurugan005@gmail.com"
+TO_EMAIL = "iambalamurugan05@gmail.com"
+EMAIL_PASS = "tsdryornazoifbcl"
 
-    with open("whitelist.txt", "w") as f:
-        for ip in legit_ips:
-            f.write(f"{ip[0]}\n")  # Store or sync to firewall allowlist
-
+# Initialize
 app = Flask(__name__)
 CORS(app)
-
-# Load DNN model
 dnn_model = joblib.load("dnn_model.pkl")
-
-# PostgreSQL connection
-conn = psycopg2.connect("postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci")
-cursor = conn.cursor()
-
-# Create alerts table if not exists
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS alerts (
-        id SERIAL PRIMARY KEY,
-        ip VARCHAR,
-        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        message TEXT,
-        dnn_prediction INT
-    );
-""")
-conn.commit()
-
 ip_requests = defaultdict(list)
 blocklist = set()
 
-def preprocess_request_data(request_data):
-    features = [
-        request_data.get("request_size", 0),
-        request_data.get("destination_port", 0),
-        request_data.get("high_request_rate", 0),
-        request_data.get("large_payload", 0),
-        request_data.get("spike_in_requests", 0),
-        request_data.get("repeated_access", 0),
-        request_data.get("unusual_user_agent", 0),
-        request_data.get("invalid_headers", 0),
-        request_data.get("small_payload", 0)
-    ]
-    return [features]
+# DB setup
+conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+cur = conn.cursor()
+cur.execute("""
+CREATE TABLE IF NOT EXISTS alerts (
+    id SERIAL PRIMARY KEY,
+    ip VARCHAR, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    message TEXT, dnn_prediction INT
+);
+""")
+conn.commit()
 
-def send_alert_email(ip, dnn_prediction, request_data):
-    from_email = "iambalamurugan005@gmail.com"
-    to_email = "iambalamurugan05@gmail.com"
-    subject = "🚨 DDoS Alert from DNN Detection"
-    
-    body = f"""
-    ⚠️ Potential DDoS attack detected!
-    IP Address: {ip}
-    DNN Prediction: {dnn_prediction}
-    Request Data: {request_data}
-    """
-    
+# --- Utility Functions ---
+def violates_rules(log):
+    return any(log.get(key, False) for key in [
+        'high_request_rate', 'large_payload', 'spike_in_requests',
+        'invalid_headers', 'unusual_user_agent', 'repeated_access'
+    ])
+
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL, sslmode='require')
+
+def preprocess(data):
+    return [[data.get(k, 0) for k in [
+        "request_size", "destination_port", "high_request_rate", "large_payload",
+        "spike_in_requests", "repeated_access", "unusual_user_agent", "invalid_headers", "small_payload"
+    ]]]
+
+def send_alert_email(ip, pred, data):
+    body = f"""⚠️ DDoS Alert!\nIP: {ip}\nPrediction: {pred}\nRequest: {data}"""
     msg = MIMEMultipart()
-    msg['From'] = from_email
-    msg['To'] = to_email
-    msg['Subject'] = subject
+    msg['From'], msg['To'], msg['Subject'] = FROM_EMAIL, TO_EMAIL, "🚨 DDoS Alert"
     msg.attach(MIMEText(body, 'plain'))
-    
+
     try:
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
-        server.login(from_email, 'tsdryornazoifbcl')  # App Password
-        server.sendmail(from_email, to_email, msg.as_string())
+        server.login(FROM_EMAIL, EMAIL_PASS)
+        server.sendmail(FROM_EMAIL, TO_EMAIL, msg.as_string())
         server.quit()
-        print("✅ Email alert sent.")
+        print("✅ Email sent.")
     except Exception as e:
-        print("❌ Failed to send email:", e)
+        print("❌ Email failed:", e)
 
+def prioritize_legit_users():
+    conn = get_db_connection()
+    with conn.cursor() as c:
+        c.execute("SELECT ip FROM traffic_logs WHERE status = 0")
+        ips = c.fetchall()
+    with open("whitelist.txt", "w") as f:
+        for ip in ips:
+            f.write(f"{ip[0]}\n")
+
+# --- Routes ---
 @app.route("/detect-dnn", methods=["POST"])
 def detect_dnn():
     data = request.get_json()
-    ip = data.get("ip", "unknown")
-    features = preprocess_request_data(data)
-    
+    ip, features = data.get("ip", "unknown"), preprocess(data)
     prediction = dnn_model.predict(features)[0]
 
     if prediction == 1:
-        # Block IP
         blocklist.add(ip)
-
-        # Store alert in DB
-        alert_msg = f"DNN detected attack from IP: {ip}"
-        cursor.execute("""
-            INSERT INTO alerts (ip, message, dnn_prediction)
-            VALUES (%s, %s, %s)
-        """, (ip, alert_msg, prediction))
+        msg = f"DNN detected attack from IP: {ip}"
+        cur.execute("INSERT INTO alerts (ip, message, dnn_prediction) VALUES (%s, %s, %s)", (ip, msg, prediction))
         conn.commit()
-
-        # Send email
         send_alert_email(ip, prediction, data)
-
-        return jsonify({"status": "blocked", "prediction": int(prediction), "message": alert_msg})
-    else:
-        return jsonify({"status": "allowed", "prediction": int(prediction)})
+        return jsonify({"status": "blocked", "prediction": int(prediction), "message": msg})
+    
+    return jsonify({"status": "allowed", "prediction": int(prediction)})
 
 @app.route("/alert-history", methods=["GET"])
 def get_alert_history():
-    cursor.execute("SELECT ip, timestamp, message, dnn_prediction FROM alerts ORDER BY timestamp DESC LIMIT 50;")
-    rows = cursor.fetchall()
+    cur.execute("SELECT ip, timestamp, message, dnn_prediction FROM alerts ORDER BY timestamp DESC LIMIT 50;")
+    rows = cur.fetchall()
+    return jsonify([{
+        "ip": row[0], "timestamp": row[1].strftime("%Y-%m-%d %H:%M:%S"),
+        "message": row[2], "dnn_prediction": row[3]
+    } for row in rows])
 
-    history = []
-    for row in rows:
-        history.append({
-            "ip": row[0],
-            "timestamp": row[1].strftime("%Y-%m-%d %H:%M:%S"),
-            "message": row[2],
-            "dnn_prediction": row[3]
-        })
-    return jsonify(history)
-
-from flask import Flask, request, jsonify
-app = Flask(__name__)
-
-# Import your send_alert_email function or use generate_alert from your DNN script
-
-@app.route('/test-email', methods=['GET'])
+@app.route('/test-email', methods=["GET"])
 def test_email():
     try:
         test_data = {
-            "ip": "123.123.123.123",
-            "request_size": 500,
-            "destination_port": 80,
-            "high_request_rate": 1,
-            "large_payload": 1,
-            "spike_in_requests": 1,
-            "repeated_access": 1,
-            "unusual_user_agent": 1,
-            "invalid_headers": 1,
+            "ip": "123.123.123.123", "request_size": 500, "destination_port": 80,
+            "high_request_rate": 1, "large_payload": 1, "spike_in_requests": 1,
+            "repeated_access": 1, "unusual_user_agent": 1, "invalid_headers": 1,
             "small_payload": 0
         }
-        send_alert_email(test_data, 1, 1, 1)
-        return jsonify({"message": "✅ Test email sent successfully!"})
+        send_alert_email(test_data['ip'], 1, test_data)
+        return jsonify({"message": "✅ Test email sent!"})
     except Exception as e:
         return jsonify({"error": str(e)})
 
-def monitor_ddos_alerts():
+# --- Background DDoS Monitor ---
+def monitor_ddos():
     while True:
         try:
-            conn = psycopg2.connect("postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a/traffic_db_6kci")
-            cursor = conn.cursor()
-
-            cursor.execute("SELECT * FROM traffic WHERE status = 1 ORDER BY timestamp DESC LIMIT 1;")
-            row = cursor.fetchone()
-
-            if row:
-                print("🚨 Malicious traffic found, sending alert...")
-                request_data = {
-                    "ip": row[1],
-                    "request_size": row[2],
-                    "destination_port": row[3],
-                    "high_request_rate": row[4],
-                    "large_payload": row[5],
-                    "spike_in_requests": row[6],
-                    "repeated_access": row[7],
-                    "unusual_user_agent": row[8],
-                    "invalid_headers": row[9],
-                    "small_payload": row[10]
-                }
-                send_alert_email(request_data, 1, 0, 1)  # Assume DNN=1, CART=0 for now
-                time.sleep(60)  # avoid spamming alerts every second
-            else:
-                print("✅ No malicious traffic found.")
-
+            conn = get_db_connection()
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM traffic WHERE status = 1 ORDER BY timestamp DESC LIMIT 1;")
+                row = cur.fetchone()
+                if row:
+                    print("🚨 Malicious traffic found")
+                    req_data = {
+                        "ip": row[1], "request_size": row[2], "destination_port": row[3],
+                        "high_request_rate": row[4], "large_payload": row[5], "spike_in_requests": row[6],
+                        "repeated_access": row[7], "unusual_user_agent": row[8],
+                        "invalid_headers": row[9], "small_payload": row[10]
+                    }
+                    send_alert_email(req_data["ip"], 1, req_data)
             conn.close()
         except Exception as e:
-            print(f"❌ Error in monitor loop: {str(e)}")
+            print(f"❌ Monitor error: {e}")
+        time.sleep(15)
 
-        time.sleep(15)  # check every 15 seconds
-
-if __name__ == '__main__':
-    # Start background thread for monitoring DDoS
-    threading.Thread(target=monitor_ddos_alerts, daemon=True).start()
-    
-    # Start Flask app
+# --- Run App ---
+if __name__ == "__main__":
+    threading.Thread(target=monitor_ddos, daemon=True).start()
     app.run(debug=True)
 
 
