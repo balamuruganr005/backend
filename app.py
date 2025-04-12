@@ -11,6 +11,7 @@ import numpy as np
 import requests
 import os
 import joblib
+from flask_mail import Mail, Message
 from collections import defaultdict
 import smtplib
 from email.mime.text import MIMEText
