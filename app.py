@@ -385,7 +385,7 @@ def debug_status():
 @app.route('/dnn-status', methods=['GET'])
 def dnn_status():
     try:
-        conn = connect_db()
+        conn = get_connect_db()
         cur = conn.cursor()
         cur.execute("SELECT timestamp, status FROM traffic_logs ORDER BY timestamp DESC LIMIT 100;")
         rows = cur.fetchall()
