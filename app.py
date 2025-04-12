@@ -464,8 +464,7 @@ TO_EMAIL = "iambalamurugan05@gmail.com"
 EMAIL_PASS = "tsdryornazoifbcl"
 
 # Initialize
-app = Flask(__name__)
-CORS(app)
+
 dnn_model = joblib.load("dnn_model.pkl")
 ip_requests = defaultdict(list)
 blocklist = set()
@@ -585,11 +584,9 @@ def monitor_ddos():
             print(f"❌ Monitor error: {e}")
         time.sleep(15)
 
-# --- Run App ---
+
+
+
 if __name__ == "__main__":
     threading.Thread(target=monitor_ddos, daemon=True).start()
-    app.run(debug=True)
-
-
-if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
