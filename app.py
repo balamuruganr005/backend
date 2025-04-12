@@ -15,6 +15,8 @@ from collections import defaultdict
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import StandardScaler
 
 
 app = Flask(__name__)
@@ -410,9 +412,6 @@ try:
 except Exception as e:
     print(f"[Model Load Error] Could not load DNN model: {e}")
     dnn_model = None
-    
-from sklearn.neural_network import MLPClassifier
-from sklearn.preprocessing import StandardScaler
 
 # Load DNN model
 def load_dnn_model():
@@ -422,7 +421,7 @@ dnn_model = load_dnn_model()
 
 # Fetch recent traffic logs from DB for retraining
 def fetch_recent_traffic():
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = get_db_connection()
     query = """
     SELECT * FROM traffic_logs
     WHERE status IS NOT NULL
@@ -432,18 +431,6 @@ def fetch_recent_traffic():
     df = pd.read_sql_query(query, conn)
     conn.close()
     return df
-
-# Preprocess features
-def preprocess(df):
-    X = df[[
-        'request_size', 'status', 'destination_port',
-        'high_request_rate', 'large_payload', 'spike_in_requests',
-        'repeated_access', 'unusual_user_agent', 'invalid_headers', 'small_payload'
-    ]]
-    y = df['status']  # status should be 0 (legit) or 1 (bad)
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    return X_scaled, y
 
 # Retrain DNN and save model
 def retrain_dnn_model():
@@ -466,24 +453,11 @@ DATABASE_URL = "postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJ
 FROM_EMAIL = "iambalamurugan005@gmail.com"
 TO_EMAIL = "iambalamurugan05@gmail.com"
 EMAIL_PASS = "tsdryornazoifbcl"
-
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "dnn_model.pkl")
 # Initialize
-
-dnn_model = joblib.load("dnn_model.pkl")
-ip_requests = defaultdict(list)
-blocklist = set()
-
 # DB setup
-conn = psycopg2.connect(DATABASE_URL, sslmode='require')
-cur = conn.cursor()
-cur.execute("""
-CREATE TABLE IF NOT EXISTS alerts (
-    id SERIAL PRIMARY KEY,
-    ip VARCHAR, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    message TEXT, dnn_prediction INT
-);
-""")
-conn.commit()
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL, sslmode='require')
 
 # --- Utility Functions ---
 def violates_rules(log):
@@ -492,14 +466,29 @@ def violates_rules(log):
         'invalid_headers', 'unusual_user_agent', 'repeated_access'
     ])
 
-def get_db_connection():
-    return psycopg2.connect(DATABASE_URL, sslmode='require')
+def preprocess(df):
+    X = df[[
+        'request_size', 'status', 'destination_port',
+        'high_request_rate', 'large_payload', 'spike_in_requests',
+        'repeated_access', 'unusual_user_agent', 'invalid_headers', 'small_payload'
+    ]]
+    y = df['status']  # status should be 0 (legit) or 1 (bad)
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    return X_scaled, y
 
-def preprocess(data):
-    return [[data.get(k, 0) for k in [
-        "request_size", "destination_port", "high_request_rate", "large_payload",
-        "spike_in_requests", "repeated_access", "unusual_user_agent", "invalid_headers", "small_payload"
-    ]]]
+def save_alert_to_db(ip, message, dnn_prediction):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    image = "ddos_pattern.jpg"  # Optional image placeholder, can be added if needed
+    cur.execute(
+        "INSERT INTO alerts (ip, timestamp, message, dnn_prediction, image) VALUES (%s, %s, %s, %s, %s)",
+        (ip, timestamp, message, dnn_prediction, image)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
 
 def send_alert_email(ip, pred, data):
     body = f"""⚠️ DDoS Alert!\nIP: {ip}\nPrediction: {pred}\nRequest: {data}"""
@@ -525,13 +514,14 @@ def prioritize_legit_users():
     with open("whitelist.txt", "w") as f:
         for ip in ips:
             f.write(f"{ip[0]}\n")
-
 @app.route("/detect-dnn", methods=["POST"])
 def detect_dnn():
     try:
+        conn = get_db_connection()
+        cur = conn.cursor()
         now = time.time()
-        c.execute("SELECT * FROM traffic_logs WHERE trust_score = 1 AND timestamp > %s", (now - 20,))
-        attackers = c.fetchall()
+        cur.execute("SELECT * FROM traffic_logs WHERE trust_score = 1 AND timestamp > %s", (now - 20,))
+        attackers = cur.fetchall()
 
         if attackers:
             subject = "🚨 DDoS Attack Detected!"
@@ -540,21 +530,14 @@ def detect_dnn():
                 body += f"IP: {attacker[2]}, Location: {attacker[3]}, UA: {attacker[4]}\n"
 
             # Send email
-            send_email(subject, body)
+            send_alert_email(subject, body)
 
             # Save alert in alerts table
             for attacker in attackers:
                 ip = attacker[2]
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 message = "Suspicious activity detected from IP."
                 dnn_prediction = attacker[6]  # Assuming trust_score is used
-                image = "ddos_pattern.jpg"  # Optional, add actual image generation if needed
-
-                c.execute(
-                    "INSERT INTO alerts (ip, timestamp, message, dnn_prediction, image) VALUES (%s, %s, %s, %s, %s)",
-                    (ip, timestamp, message, dnn_prediction, image)
-                )
-            conn.commit()
+                save_alert_to_db(ip, message, dnn_prediction)
 
         return jsonify({"status": "checked", "attackers_found": len(attackers)})
 
@@ -565,13 +548,15 @@ def detect_dnn():
 
 @app.route("/alert-history", methods=["GET"])
 def get_alert_history():
+    conn = get_db_connection()
+    cur = conn.cursor()
     cur.execute("SELECT ip, timestamp, message, dnn_prediction FROM alerts ORDER BY timestamp DESC LIMIT 50;")
     rows = cur.fetchall()
+    conn.close()
     return jsonify([{
         "ip": row[0], "timestamp": row[1].strftime("%Y-%m-%d %H:%M:%S"),
         "message": row[2], "dnn_prediction": row[3]
     } for row in rows])
-
 
 @app.route('/test-email', methods=["GET"])
 def test_email():
@@ -608,8 +593,6 @@ def monitor_ddos():
         except Exception as e:
             print(f"❌ Monitor error: {e}")
         time.sleep(15)
-
-
 
 
 if __name__ == "__main__":
