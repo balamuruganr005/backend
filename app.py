@@ -400,19 +400,15 @@ def dnn_status():
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)})
+with open("dnn_model.pkl", "rb") as f:
+    dnn_model = joblib.load(f)  # Ensure to load using joblib since it’s a sklearn model
 
-import pickle
-import numpy as np
+# Add your 18 DNN feature list here
+DNN_FEATURES = ['feature1', 'feature2', 'feature3', ..., 'feature18']  # Replace with your actual feature names
 
-model = joblib.load("dnn_model.pkl")
-sample_input = np.random.rand(1, 18)  # Replace with real format
-prediction = model.predict(sample_input)
-print("Prediction:", prediction)
-
-# Configs
+# Configs for PostgreSQL and Email
 engine = create_engine("postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci")
 
-# Email Setup
 EMAIL_FROM = "iambalamurugna005@gmail.com"
 EMAIL_TO = "iambalamurugan05@gmail.com"
 SMTP_SERVER = "smtp.gmail.com"
@@ -420,22 +416,14 @@ SMTP_PORT = 587
 SMTP_USERNAME = "iambalamurugna005@gmail.com"
 SMTP_PASSWORD = "tsdryornazoifbcl"
 
-# Load the trained DNN model
-with open("dnn_model.pkl", "rb") as f:
-    dnn_model = pickle.load(f)
-
-# Add your 18 DNN feature list here
-DNN_FEATURES = ['feature1', 'feature2', 'feature3', ..., 'feature18']  # Update with actual features
-
+# Function to send email alert
 def send_email_alert(alert_rows):
     subject = "⚠️ DDoS Alert Triggered!"
     body = "🚨 The following suspicious/malicious traffic has been detected:\n\n"
-
     for row in alert_rows:
         body += f"IP: {row['ip']} | Port: {row['destination_port']} | Size: {row['request_size']} | Status: {row['status']}\n"
 
     body += "\nPlease investigate immediately.\n— Team 7 DDoS Monitor"
-
     msg = MIMEText(body)
     msg['Subject'] = subject
     msg['From'] = EMAIL_FROM
@@ -450,23 +438,34 @@ def send_email_alert(alert_rows):
     except Exception as e:
         print("[❌] Failed to send email:", e)
 
+# Handle missing or "unknown" values
+def handle_missing_values(row):
+    for feature in DNN_FEATURES:
+        if pd.isna(row[feature]):  # Check for NaN or missing data
+            row[feature] = 0  # Or use a default value (e.g., 0 or the mean)
+    return row
+
+# Analyze traffic with DNN and rule-based checks
 def analyze_traffic_with_rules_and_dnn(df):
     suspicious_rows = []
-
+    
     for _, row in df.iterrows():
+        # Handle missing data in the row
+        row = handle_missing_values(row)
+
         rule_violated = (
-            row["high_request_rate"] == 1 or
-            row["large_payload"] == 1 or
-            row["spike_in_requests"] == 1 or
-            row["repeated_access"] == 1 or
-            row["unusual_user_agent"] == 1 or
-            row["invalid_headers"] == 1
+            row.get("high_request_rate", 0) == 1 or
+            row.get("large_payload", 0) == 1 or
+            row.get("spike_in_requests", 0) == 1 or
+            row.get("repeated_access", 0) == 1 or
+            row.get("unusual_user_agent", 0) == 1 or
+            row.get("invalid_headers", 0) == 1
         )
 
         # Predict with DNN model
         try:
-            dnn_input = row[DNN_FEATURES].values.reshape(1, -1)
-            prediction = dnn_model.predict(dnn_input)[0]
+            dnn_input = row[DNN_FEATURES].values.reshape(1, -1)  # Reshape to match model input format
+            prediction = dnn_model.predict(dnn_input)[0]  # Get single prediction value
         except Exception as e:
             print("[❌] DNN Prediction failed:", e)
             prediction = 0
@@ -476,9 +475,10 @@ def analyze_traffic_with_rules_and_dnn(df):
 
     return suspicious_rows
 
+# Monitor DDoS and send alerts
 def monitor_ddos_and_alert():
     while True:
-        time.sleep(15)
+        time.sleep(15)  # Run the check every 15 seconds
         with engine.connect() as conn:
             result = conn.execute(text("SELECT * FROM traffic_data")).mappings().all()
             if not result:
@@ -494,11 +494,13 @@ def monitor_ddos_and_alert():
             else:
                 print("[✅] No suspicious or malicious traffic detected.")
 
+# Start alert monitoring in a separate thread
 @app.before_first_request
 def start_alert_monitor():
     thread = Thread(target=monitor_ddos_and_alert)
     thread.daemon = True
     thread.start()
 
+# Run the Flask app
 if __name__ == "__main__":
     app.run(debug=True)
