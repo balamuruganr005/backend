@@ -401,21 +401,26 @@ def dnn_status():
         return jsonify({"error": str(e)})
 
 
-import os
-import joblib
+# Configs
+DATABASE_URL = "postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci"
+FROM_EMAIL = "iambalamurugan005@gmail.com"
+TO_EMAIL = "iambalamurugan05@gmail.com"
+EMAIL_PASS = "tsdryornazoifbcl"
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "dnn_model.pkl")
 
-model_path = os.path.join(os.path.dirname(__file__), "dnn_model.pkl")
+# Initialize Flask App
+app = Flask(__name__)
 
-try:
-    dnn_model = joblib.load(model_path)
-    print("[Model Load] DNN model loaded successfully ✅")
-except Exception as e:
-    print(f"[Model Load Error] Could not load DNN model: {e}")
-    dnn_model = None
+# Updated CORS configuration
+CORS(app, origins=["http://localhost:5173", "https://ddosweb.vercel.app"])
+
+# DB setup
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL, sslmode='require')
 
 # Load DNN model
 def load_dnn_model():
-    return joblib.load("dnn_model.pkl")
+    return joblib.load(MODEL_PATH)
 
 dnn_model = load_dnn_model()
 
@@ -438,37 +443,13 @@ def retrain_dnn_model():
     X, y = preprocess(df)
     model = MLPClassifier(hidden_layer_sizes=(64, 32), max_iter=500)
     model.fit(X, y)
-    joblib.dump(model, "dnn_model.pkl")
+    joblib.dump(model, MODEL_PATH)
     return "DNN model retrained with new traffic patterns."
 
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from collections import defaultdict
-import psycopg2, joblib, smtplib, threading, time
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-
-# Configs
-DATABASE_URL = "postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci"
-FROM_EMAIL = "iambalamurugan005@gmail.com"
-TO_EMAIL = "iambalamurugan05@gmail.com"
-EMAIL_PASS = "tsdryornazoifbcl"
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "dnn_model.pkl")
-# Initialize
-# DB setup
-def get_db_connection():
-    return psycopg2.connect(DATABASE_URL, sslmode='require')
-
-# --- Utility Functions ---
-def violates_rules(log):
-    return any(log.get(key, False) for key in [
-        'high_request_rate', 'large_payload', 'spike_in_requests',
-        'invalid_headers', 'unusual_user_agent', 'repeated_access'
-    ])
-
+# Preprocess traffic data
 def preprocess(df):
-    X = df[[
-        'request_size', 'status', 'destination_port',
+    X = df[[ 
+        'request_size', 'status', 'destination_port', 
         'high_request_rate', 'large_payload', 'spike_in_requests',
         'repeated_access', 'unusual_user_agent', 'invalid_headers', 'small_payload'
     ]]
@@ -477,6 +458,7 @@ def preprocess(df):
     X_scaled = scaler.fit_transform(X)
     return X_scaled, y
 
+# Utility Functions
 def save_alert_to_db(ip, message, dnn_prediction):
     conn = get_db_connection()
     cur = conn.cursor()
@@ -514,6 +496,20 @@ def prioritize_legit_users():
     with open("whitelist.txt", "w") as f:
         for ip in ips:
             f.write(f"{ip[0]}\n")
+
+# Routes
+@app.route('/dnn-status', methods=['GET'])
+def dnn_status():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT timestamp, status FROM traffic_logs ORDER BY timestamp DESC LIMIT 100;")
+        rows = cur.fetchall()
+        result = [{"timestamp": r[0], "status": r[1]} for r in rows]
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
 @app.route("/detect-dnn", methods=["POST"])
 def detect_dnn():
     try:
@@ -544,8 +540,6 @@ def detect_dnn():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-
 @app.route("/alert-history", methods=["GET"])
 def get_alert_history():
     conn = get_db_connection()
@@ -561,16 +555,33 @@ def get_alert_history():
 @app.route('/test-email', methods=["GET"])
 def test_email():
     try:
+        # Test data (you can modify this to your specific case)
         test_data = {
-            "ip": "123.123.123.123", "request_size": 500, "destination_port": 80,
-            "high_request_rate": 1, "large_payload": 1, "spike_in_requests": 1,
-            "repeated_access": 1, "unusual_user_agent": 1, "invalid_headers": 1,
+            "ip": "123.123.123.123", 
+            "request_size": 500, 
+            "destination_port": 80,
+            "high_request_rate": 1, 
+            "large_payload": 1, 
+            "spike_in_requests": 1,
+            "repeated_access": 1, 
+            "unusual_user_agent": 1, 
+            "invalid_headers": 1,
             "small_payload": 0
         }
+
+        # Send the test email
         send_alert_email(test_data['ip'], 1, test_data)
-        return jsonify({"message": "✅ Test email sent!"})
+
+        # Save the alert to the database so it shows in /alert-history
+        message = "Test DDoS alert sent via /test-email endpoint"
+        dnn_prediction = 1  # Let's assume 1 indicates bad traffic (DDoS)
+        save_alert_to_db(test_data['ip'], message, dnn_prediction)
+
+        return jsonify({"message": "✅ Test email sent and saved to alert history!"})
+
     except Exception as e:
         return jsonify({"error": str(e)})
+
 
 # --- Background DDoS Monitor ---
 def monitor_ddos():
@@ -593,7 +604,6 @@ def monitor_ddos():
         except Exception as e:
             print(f"❌ Monitor error: {e}")
         time.sleep(15)
-
 
 if __name__ == "__main__":
     threading.Thread(target=monitor_ddos, daemon=True).start()
