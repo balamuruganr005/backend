@@ -8,4 +8,7 @@ requests
 psycopg2
 joblib
 scikit-learn
-sqlalchemy
+flask-SQLALchemy
+Flask-Mail
+celery
+pandas
