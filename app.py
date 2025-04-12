@@ -18,6 +18,8 @@ from email.mime.multipart import MIMEMultipart
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 from threading import Thread
+from sqlalchemy import create_engine
+
 
 
 app = Flask(__name__)
