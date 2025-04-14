@@ -36,7 +36,7 @@ limiter = Limiter(
 )
 
 # PostgreSQL connection setup using your Render database connection string
-DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci')
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2')
 conn = psycopg2.connect(DATABASE_URL, sslmode='require')
 c = conn.cursor()
 
@@ -416,7 +416,7 @@ mail = Mail(app)
 model = joblib.load('dnn_model.pkl')  # Load your DNN model
 
 # PostgreSQL connection string
-DATABASE_URL = "postgresql://traffic_db_6kci_user:bTXPfiMeieoQ8EqNZYv1480Vwl7lJJaz@dpg-cvajkgin91rc7395vv1g-a.oregon-postgres.render.com/traffic_db_6kci"
+DATABASE_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2"
 
 # Function to connect to PostgreSQL using the URL
 def connect_db():
