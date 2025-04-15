@@ -474,9 +474,9 @@ from alert import trigger_alert
 
 @app.route("/test-email-alert")
 def test_email_alert():
-    test_message = "🚨 This is a test DDoS alert from /test-email-alert route"
-    trigger_alert(test_message)
-    return jsonify({"status": "success", "message": "Test alert triggered."})
+    trigger_alert("127.0.0.1", "🚨 Test alert from /test-email-alert endpoint.")
+    return "Test alert triggered"
+
 
 
 # Run the Flask app
