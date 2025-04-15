@@ -9,6 +9,7 @@ import psycopg2
 import geoip2.database
 import numpy as np
 import requests
+from urllib.parse import urlparse
 import os
 import joblib
 from flask_mail import Mail, Message
