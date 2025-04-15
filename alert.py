@@ -1,4 +1,4 @@
-# backend/alert.py
+ # backend/alert.py
 
 import psycopg2
 from datetime import datetime
@@ -49,7 +49,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
 
-def send_email_alert(subject):
+def send_email_alert(subject, message):
     try:
         msg = MIMEMultipart()
         msg["From"] = SENDER_EMAIL
