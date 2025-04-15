@@ -44,23 +44,30 @@ def insert_alert_to_db(ip, message, source="DNN Detection"):
 
 
 
+import smtplib
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from email.header import Header
 
 def send_email_alert(subject, body):
-    msg = MIMEText(body, "plain", "utf-8")  # Enforce UTF-8 encoding
-    msg["Subject"] = Header(subject, "utf-8")  # Encode subject too
-    msg["From"] = SENDER_EMAIL
-    msg["To"] = RECEIVER_EMAIL
-
     try:
-        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
-        server.login(SENDER_EMAIL, APP_PASSWORD)
-        server.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, msg.as_string())
-        server.quit()
+        msg = MIMEMultipart()
+        msg["From"] = SENDER_EMAIL
+        msg["To"] = RECEIVER_EMAIL
+        msg["Subject"] = Header(subject, "utf-8")
+
+        # Body with UTF-8 encoding (even emojis 🚨🔥 etc.)
+        body_part = MIMEText(body, "plain", "utf-8")
+        msg.attach(body_part)
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(SENDER_EMAIL, APP_PASSWORD)
+            server.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, msg.as_string())
+
         print("✅ Email alert sent.")
     except Exception as e:
         print("❌ Email failed:", e)
+
 
 
 
