@@ -10,6 +10,7 @@ import geoip2.database
 import numpy as np
 import requests
 from urllib.parse import urlparse
+from io import StringIO
 import os
 import joblib
 from flask_mail import Mail, Message
@@ -512,7 +513,6 @@ def get_alert_history():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Updated DB URL for 'traffic_logs' database
 DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_logs"
 
 # Email credentials
@@ -581,7 +581,6 @@ def monitor_traffic():
             print(f"❌ Error during monitoring: {e}")
 
 # Start the monitoring in a separate thread
-@app.before_first_request
 def start_monitoring():
     monitor_thread = threading.Thread(target=monitor_traffic)
     monitor_thread.daemon = True
@@ -592,10 +591,8 @@ def start_monitoring():
 def monitor_route():
     return jsonify({"status": "monitoring_active", "message": "Monitoring is running in the background every 15 seconds."})
 
-if __name__ == "__main__":
-    app.run(debug=True)
-
 
 # Run the Flask app
 if __name__ == "__main__":
+    start_monitoring()
     app.run(host="0.0.0.0", port=5000, debug=True)
