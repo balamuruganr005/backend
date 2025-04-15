@@ -12,6 +12,8 @@ DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cv
 SENDER_EMAIL = "iambalamurugan005@gmail.com"
 APP_PASSWORD = "hqpsaxhskmahouyx"
 RECEIVER_EMAIL = "iambalamurugan05@gmail.com"
+from datetime import datetime
+import psycopg2
 
 def insert_alert_to_db(ip, message, source="DNN Detection"):
     try:
@@ -27,6 +29,8 @@ def insert_alert_to_db(ip, message, source="DNN Detection"):
         print("✅ Alert inserted into DB.")
     except Exception as e:
         print("❌ Failed to insert alert:", e)
+print(f"Inserting alert: IP={ip}, Message={message}, Timestamp={timestamp}, Source={source}")
+
 
 def send_email_alert(subject, body):
     # Encode the email body as UTF-8 to handle emojis and special characters
