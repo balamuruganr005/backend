@@ -48,8 +48,8 @@ from email.mime.text import MIMEText
 from email.header import Header
 
 def send_email_alert(subject, body):
-    msg = MIMEText(body, "plain", "utf-8")  # Use UTF-8 encoding
-    msg["Subject"] = Header(subject, "utf-8")  # Properly encode subject too
+    msg = MIMEText(body, "plain", "utf-8")  # Enforce UTF-8 encoding
+    msg["Subject"] = Header(subject, "utf-8")  # Encode subject too
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
 
@@ -61,6 +61,7 @@ def send_email_alert(subject, body):
         print("✅ Email alert sent.")
     except Exception as e:
         print("❌ Email failed:", e)
+
 
 
 def trigger_alert(ip, message):
