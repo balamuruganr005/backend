@@ -475,9 +475,17 @@ from alert import trigger_alert
 
 @app.route("/test-email-alert")
 def test_email_alert():
-    print("✅ Test email route hit!")  # Debug: Checking if the route is being hit
-    trigger_alert("127.0.0.1", " Test alert from /test-email-alert endpoint.")
+    print(" Test email route hit!")  # Debug: Checking if the route is being hit
+    
+    ip = "127.0.0.1"
+    message = "Test alert from /test-email-alert endpoint."
+    
+    # Log values before passing to trigger_alert
+    print(f"Test Email Alert - IP: {ip}, Message: {message}")
+    
+    trigger_alert(ip, message)  # Call the trigger_alert function
     return "Alert Triggered"
+
 
 # Run the Flask app
 if __name__ == "__main__":
