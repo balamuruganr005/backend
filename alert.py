@@ -23,6 +23,9 @@ def insert_alert_to_db(ip, message, source="DNN Detection"):
         # Get the current timestamp first
         timestamp = datetime.now()
 
+        # Debug: Print out the types of values to check for any issues
+        print(f"Debug - IP: {ip} (type: {type(ip)}), Message: {message} (type: {type(message)}), Timestamp: {timestamp}, Source: {source}")
+
         # Now log the input values
         print(f"Inserting alert: IP={ip}, Message={message}, Timestamp={timestamp}, Source={source}")
 
@@ -73,9 +76,12 @@ def send_email_alert(subject, body):
 
 
 
-def trigger_alert(id, ip, message):
+def trigger_alert(ip, message):
     print("✅ Triggered alert!")  # Debug: Confirm trigger is being called
-    insert_alert_to_db(id, ip, message)
-    send_email_alert(" DDoS Alert", message)
+    # Ensure message is a string
+    message = str(message)  
+    insert_alert_to_db(ip, message)
+    send_email_alert("DDoS Alert", message)
+
 
 
