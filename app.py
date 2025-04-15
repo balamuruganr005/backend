@@ -455,7 +455,10 @@ def detect_dnn():
 
     return jsonify({"status": "no malicious traffic detected"}), 200
 
-
+@app.route('/traffic-dataa', methods=['GET'])
+def traffic_data():
+    data = get_traffic_data()
+    return jsonify(data), 200
 
 # Route to view alert history
 @app.route('/alert-history', methods=['GET'])
