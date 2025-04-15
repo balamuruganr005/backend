@@ -13,18 +13,21 @@ SENDER_EMAIL = "iambalamurugan005@gmail.com"
 APP_PASSWORD = "hqpsaxhskmahouyx"
 RECEIVER_EMAIL = "iambalamurugan05@gmail.com"
 
-def insert_alert_to_db(message, source="DNN Detection"):
+def insert_alert_to_db(ip, message, source="DNN Detection"):
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         timestamp = datetime.now()
-        cur.execute("INSERT INTO alerts (message, timestamp, source) VALUES (%s, %s, %s)",
-                    (message, timestamp, source))
+        cur.execute(
+            "INSERT INTO alerts (ip, message, timestamp, source) VALUES (%s, %s, %s, %s)",
+            (ip, message, timestamp, source)
+        )
         conn.commit()
         conn.close()
         print("✅ Alert inserted into DB.")
     except Exception as e:
         print("❌ Failed to insert alert:", e)
+
 
 # Email credentials
 def send_email_alert(subject, body):
@@ -43,6 +46,7 @@ def send_email_alert(subject, body):
         print("❌ Email failed:", e)
 
 
-def trigger_alert(message):
-    insert_alert_to_db(message)
+def trigger_alert(ip, message):
+    insert_alert_to_db(ip, message)
     send_email_alert("🚨 DDoS Alert", message)
+
