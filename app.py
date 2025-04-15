@@ -457,26 +457,25 @@ def analyze_traffic(data):
     return predictions
 
 # Detect malicious traffic and trigger alert
+from alert import trigger_alert
+
 @app.route('/detect-dnn', methods=['POST'])
 def detect_dnn():
     traffic_data = get_traffic_data()
-    
-    # Format the traffic data to match the model input
-    # Example: Assuming your model uses the traffic data as features in an array
-    features = [data[1:] for data in traffic_data]  # Skip timestamp or any unnecessary columns
-    
-    # Analyze traffic
+    features = [data[1:] for data in traffic_data]  # Skip timestamp etc.
     predictions = analyze_traffic(features)
-    
-    # Check for malicious traffic
+
     malicious_entries = [traffic_data[i] for i, pred in enumerate(predictions) if pred == 1]
-    
+
     if malicious_entries:
-        # Send email alert if malicious traffic is detected
-        send_alert_email("DDoS Detected", "Malicious traffic detected in your system. Take necessary actions.")
-        return jsonify({"status": "malicious traffic detected", "data": malicious_entries}), 200
-    
+        trigger_alert("🚨 DDoS Detected by DNN! Malicious traffic found. Take action immediately.")
+        return jsonify({
+            "status": "malicious traffic detected",
+            "data": malicious_entries
+        }), 200
+
     return jsonify({"status": "no malicious traffic detected"}), 200
+
 
 # Route to get traffic data
 @app.route('/traffic-data', methods=['GET'])
