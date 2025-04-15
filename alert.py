@@ -32,8 +32,8 @@ def insert_alert_to_db(ip, message, source="DNN Detection"):
 
         # Execute the insert statement
         cur.execute(
-            "INSERT INTO alerts (ip, message, timestamp, source) VALUES (%s, %s, %s, %s)",
-            (ip, message, timestamp, source)
+            "INSERT INTO alerts (id, ip, message, timestamp, source) VALUES (%s, %s, %s, %s, %s)",
+            (id, ip, message, timestamp, source)
         )
 
         conn.commit()
