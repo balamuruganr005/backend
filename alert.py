@@ -49,15 +49,15 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
 
-def send_email_alert(subject, body):
+def send_email_alert(subject):
     try:
         msg = MIMEMultipart()
         msg["From"] = SENDER_EMAIL
         msg["To"] = RECEIVER_EMAIL
-        msg["Subject"] = Header(subject, "utf-8")
+        msg["Subject"] = Header(subject)
 
         # Body with UTF-8 encoding (even emojis 🚨🔥 etc.)
-        body_part = MIMEText(body, "plain", "utf-8")
+        body_part = MIMEText(body, "plain")
         msg.attach(body_part)
 
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
