@@ -512,6 +512,78 @@ def get_alert_history():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2"
+
+SENDER_EMAIL = "iambalamurugan005@gmail.com"
+APP_PASSWORD = "hqpsaxhskmahouyx"
+RECEIVER_EMAIL = "iambalamurugan05@gmail.com"
+
+monitoring = False  # Global flag to avoid duplicate threads
+
+@app.route("/monitor", methods=["GET"])
+def monitor_ddos():
+    global monitoring
+
+    if monitoring:
+        return "🔄 Monitor already running."
+
+    def monitor_loop():
+        global monitoring
+        monitoring = True
+
+        while True:
+            try:
+                conn = psycopg2.connect(DB_URL)
+                cur = conn.cursor()
+                cur.execute("SELECT * FROM traffic WHERE status = 1 OR status = 'suspicious' OR status = 'malicious'")
+                bad_traffic = cur.fetchall()
+
+                if not bad_traffic:
+                    print("✅ Traffic is safe. Stopping monitor.")
+                    monitoring = False
+                    break  # Stop monitoring
+
+                # Create CSV from /alert-history
+                cur.execute("SELECT id, ip, message, timestamp, source FROM alerts ORDER BY timestamp DESC")
+                alerts = cur.fetchall()
+
+                csv_buffer = StringIO()
+                writer = csv.writer(csv_buffer)
+                writer.writerow(["ID", "IP", "Message", "Timestamp", "Source"])
+                for alert in alerts:
+                    writer.writerow(alert)
+
+                csv_content = csv_buffer.getvalue()
+
+                # Send email with CSV attached
+                msg = MIMEMultipart()
+                msg["From"] = SENDER_EMAIL
+                msg["To"] = RECEIVER_EMAIL
+                msg["Subject"] = "DDOS/DOS detected immediate action required"
+
+                body = MIMEText("🚨 DDOS/DOS traffic detected.\n\nAttached: Complete alert history.", "plain")
+                msg.attach(body)
+
+                part = MIMEApplication(csv_content, Name="alert_history.csv")
+                part['Content-Disposition'] = 'attachment; filename="alert_history.csv"'
+                msg.attach(part)
+
+                with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                    server.login(SENDER_EMAIL, APP_PASSWORD)
+                    server.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, msg.as_string())
+
+                print("📧 Alert email sent.")
+                conn.close()
+
+            except Exception as e:
+                print("❌ Monitor error:", e)
+
+            time.sleep(15)
+
+    threading.Thread(target=monitor_loop).start()
+    return "🚀 Monitor started."
+
+
 # Run the Flask app
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
