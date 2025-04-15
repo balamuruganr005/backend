@@ -512,6 +512,7 @@ def get_alert_history():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Updated DB URL for 'traffic_logs' database
 DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_logs"
 
 # Email credentials
@@ -523,7 +524,7 @@ RECEIVER_EMAIL = "iambalamurugan05@gmail.com"
 def fetch_alerts():
     conn = psycopg2.connect(DB_URL)
     cur = conn.cursor()
-    cur.execute("SELECT * FROM alerts ORDER BY timestamp DESC LIMIT 100")
+    cur.execute("SELECT * FROM traffic_logs ORDER BY timestamp DESC LIMIT 100")
     data = cur.fetchall()
     columns = [desc[0] for desc in cur.description]
     conn.close()
@@ -590,6 +591,9 @@ def start_monitoring():
 @app.route("/monitor", methods=["GET"])
 def monitor_route():
     return jsonify({"status": "monitoring_active", "message": "Monitoring is running in the background every 15 seconds."})
+
+if __name__ == "__main__":
+    app.run(debug=True)
 
 
 # Run the Flask app
