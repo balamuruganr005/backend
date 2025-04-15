@@ -470,6 +470,15 @@ def alert_history():
     conn.close()
     return jsonify(alerts), 200
 
+from alert import trigger_alert
+
+@app.route("/test-email-alert")
+def test_email_alert():
+    test_message = "🚨 This is a test DDoS alert from /test-email-alert route"
+    trigger_alert(test_message)
+    return jsonify({"status": "success", "message": "Test alert triggered."})
+
+
 # Run the Flask app
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
