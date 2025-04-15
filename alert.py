@@ -26,8 +26,9 @@ def insert_alert_to_db(message, source="DNN Detection"):
     except Exception as e:
         print("❌ Failed to insert alert:", e)
 
+# Email credentials
 def send_email_alert(subject, body):
-    msg = MIMEText(body)
+    msg = MIMEText(body, _charset="utf-8")  # 👈 ensures emoji support
     msg["Subject"] = subject
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
@@ -40,6 +41,7 @@ def send_email_alert(subject, body):
         print("✅ Email alert sent.")
     except Exception as e:
         print("❌ Email failed:", e)
+
 
 def trigger_alert(message):
     insert_alert_to_db(message)
