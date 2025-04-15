@@ -20,30 +20,31 @@ import psycopg2
 
 def insert_alert_to_db(ip, message, source="DNN Detection"):
     try:
-        # Get the current timestamp first
+        # Ensure valid types before inserting
+        ip = str(ip)
+        message = str(message)
+
+        # Log input data before execution
+        print(f"Inserting alert: IP={ip}, Message={message}, Source={source}")
+
         timestamp = datetime.now()
-
-        # Debug: Print out the types of values to check for any issues
-        print(f"Debug - IP: {ip} (type: {type(ip)}), Message: {message} (type: {type(message)}), Timestamp: {timestamp}, Source: {source}")
-
-        # Now log the input values
-        print(f"Inserting alert: IP={ip}, Message={message}, Timestamp={timestamp}, Source={source}")
 
         # Connect to the database
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
 
         # Execute the insert statement
-        cur.execute(
-            "INSERT INTO alerts (ip, message, timestamp, source) VALUES (%s, %s, %s, %s)",
-            (ip, message, timestamp, source)
-        )
+        query = 'INSERT INTO alerts ("ip", "message", "timestamp", "source") VALUES (%s, %s, %s, %s)'
+        cur.execute(query, (ip, message, timestamp, source))
 
         conn.commit()
+
+        print("✅ Data inserted successfully.")
+
         conn.close()
-        print("✅ Alert inserted into DB.")
     except Exception as e:
         print("❌ Failed to insert alert:", e)
+
 
 
 
