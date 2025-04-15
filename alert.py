@@ -50,25 +50,27 @@ from email.mime.multipart import MIMEMultipart
 from email.header import Header
 
 def send_email_alert(subject, body):
-    print("✅ Sending email now...")  # Debug: Confirm email logic starts executing
+    print("✅ Sending email now...")
     try:
         msg = MIMEMultipart()
         msg["From"] = SENDER_EMAIL
         msg["To"] = RECEIVER_EMAIL
         msg["Subject"] = Header(subject, "utf-8")
+
         body_part = MIMEText(body, "plain", "utf-8")
         msg.attach(body_part)
 
-        # Debugging SMTP logs
-        server.set_debuglevel(1)  # Prints detailed SMTP communication logs
-
+        # Now initialize the SMTP server inside the 'with' statement
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.set_debuglevel(1)  # Optional: enable SMTP debugging
             server.login(SENDER_EMAIL, APP_PASSWORD)
             server.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, msg.as_string())
-        
+
         print("✅ Email sent successfully!")
+
     except Exception as e:
         print("❌ Email failed:", e)
+
 
 
 def trigger_alert(ip, message):
