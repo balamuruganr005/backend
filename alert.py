@@ -73,9 +73,9 @@ def send_email_alert(subject, body):
 
 
 
-def trigger_alert(ip, message):
+def trigger_alert(id, ip, message):
     print("✅ Triggered alert!")  # Debug: Confirm trigger is being called
-    insert_alert_to_db(ip, message)
+    insert_alert_to_db(id, ip, message)
     send_email_alert(" DDoS Alert", message)
 
 
