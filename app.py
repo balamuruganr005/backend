@@ -404,19 +404,10 @@ def dnn_status():
     except Exception as e:
         return jsonify({"error": str(e)})
 
-# Flask email configuration
-app.config['MAIL_USERNAME'] = 'iambalamurugan005@gmail.com'  # Sender's email address
-app.config['MAIL_PASSWORD'] = 'tsdryornazoifbcl'  # App password
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'  # Gmail SMTP server
-app.config['MAIL_PORT'] = 587  # SMTP port for TLS
-app.config['MAIL_USE_TLS'] = True  # Use TLS for security
-mail = Mail(app)
-
-# Initialize DNN model
 model = joblib.load('dnn_model.pkl')  # Load your DNN model
 
-# PostgreSQL connection string
-DATABASE_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2"
+# Fetch the DATABASE_URL from environment variables
+DATABASE_URL = os.getenv('DATABASE_URL')
 
 # Function to connect to PostgreSQL using the URL
 def connect_db():
@@ -430,23 +421,11 @@ def connect_db():
     )
     return conn
 
-# Function to send email alerts
-def send_alert_email(subject, body):
-    msg = Message(subject,
-                  sender='iambalamurugan005@gmail.com',
-                  recipients=['iambalamurugan05@gmail.com'])
-    msg.body = body
-    try:
-        mail.send(msg)
-        print("Email sent successfully!")
-    except Exception as e:
-        print(f"Error sending email: {e}")
-
 # Function to fetch traffic data
 def get_traffic_data():
     conn = connect_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM traffic_data WHERE timestamp > %s", (datetime.now() - timedelta(minutes=15),))
+    cursor.execute("SELECT * FROM traffic_logs WHERE timestamp > %s", (datetime.now() - timedelta(minutes=15),))
     data = cursor.fetchall()
     conn.close()
     return data
@@ -456,7 +435,7 @@ def analyze_traffic(data):
     predictions = model.predict(data)
     return predictions
 
-# Detect malicious traffic and trigger alert
+# Function to send alerts (using alert.py)
 from alert import trigger_alert
 
 @app.route('/detect-dnn', methods=['POST'])
@@ -477,11 +456,6 @@ def detect_dnn():
     return jsonify({"status": "no malicious traffic detected"}), 200
 
 
-# Route to get traffic data
-@app.route('/traffic-data', methods=['GET'])
-def traffic_data():
-    data = get_traffic_data()
-    return jsonify(data), 200
 
 # Route to view alert history
 @app.route('/alert-history', methods=['GET'])
@@ -492,14 +466,6 @@ def alert_history():
     alerts = cursor.fetchall()
     conn.close()
     return jsonify(alerts), 200
-
-# Function to insert alerts into the database
-def insert_alert(message):
-    conn = connect_db()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO alerts (message, timestamp) VALUES (%s, %s)", (message, datetime.now()))
-    conn.commit()
-    conn.close()
 
 # Run the Flask app
 if __name__ == "__main__":
