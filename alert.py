@@ -39,11 +39,11 @@ def insert_alert_to_db(ip, message, source="DNN Detection"):
 
         conn.commit()
 
-        print("✅ Data inserted successfully.")
+        print(" Data inserted successfully.")
 
         conn.close()
     except Exception as e:
-        print("❌ Failed to insert alert:", e)
+        print(" Failed to insert alert:", e)
 
 
 
@@ -54,7 +54,7 @@ from email.mime.multipart import MIMEMultipart
 from email.header import Header
 
 def send_email_alert(subject, body):
-    print("✅ Sending email now...")
+    print(" Sending email now...")
     try:
         msg = MIMEMultipart()
         msg["From"] = SENDER_EMAIL
@@ -70,15 +70,15 @@ def send_email_alert(subject, body):
             server.login(SENDER_EMAIL, APP_PASSWORD)
             server.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, msg.as_string())
 
-        print("✅ Email sent successfully!")
+        print(" Email sent successfully!")
 
     except Exception as e:
-        print("❌ Email failed:", e)
+        print(" Email failed:", e)
 
 
 
 def trigger_alert(ip, message):
-    print("✅ Triggered alert!")  # Debug: Confirm trigger is being called
+    print("Triggered alert!")  # Debug: Confirm trigger is being called
     # Ensure message is a string
     message = str(message)  
     insert_alert_to_db(ip, message)
