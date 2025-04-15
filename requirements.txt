@@ -6,6 +6,7 @@ geoip2
 matplotlib
 requests
 psycopg2
+psycopg2-binary
 joblib
 scikit-learn
 flask-SQLALchemy
