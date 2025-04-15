@@ -20,23 +20,22 @@ import psycopg2
 
 def insert_alert_to_db(ip, message, source="DNN Detection"):
     try:
-        # Log the inputs before executing the SQL query
+        # Get the current timestamp first
+        timestamp = datetime.now()
+
+        # Now log the input values
         print(f"Inserting alert: IP={ip}, Message={message}, Timestamp={timestamp}, Source={source}")
 
         # Connect to the database
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        
-        # Get the current timestamp
-        timestamp = datetime.now()
-        
+
         # Execute the insert statement
         cur.execute(
             "INSERT INTO alerts (ip, message, timestamp, source) VALUES (%s, %s, %s, %s)",
             (ip, message, timestamp, source)
         )
-        
-        # Commit the transaction
+
         conn.commit()
         conn.close()
         print("✅ Alert inserted into DB.")
@@ -46,8 +45,7 @@ def insert_alert_to_db(ip, message, source="DNN Detection"):
 
 
 def send_email_alert(subject, body):
-    # Encode the email body as UTF-8 to handle emojis and special characters
-    msg = MIMEText(body.encode('utf-8'), _charset="utf-8")
+    msg = MIMEText(body, _charset="utf-8")  # <-- this fixes encoding issue
     msg["Subject"] = subject
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
@@ -60,9 +58,6 @@ def send_email_alert(subject, body):
         print("✅ Email alert sent.")
     except Exception as e:
         print("❌ Email failed:", e)
-
-
-
 
 def trigger_alert(ip, message):
     insert_alert_to_db(ip, message)
