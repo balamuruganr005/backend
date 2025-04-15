@@ -475,6 +475,7 @@ from alert import trigger_alert
 @app.route("/test-email-alert")
 def test_email_alert():
     trigger_alert("127.0.0.1", "🚨 Test alert from /test-email-alert endpoint.")
+    print(f"Inserting alert: IP={ip}, Message={message}, Timestamp={timestamp}, Source={source}")
     return "Test alert triggered"
 
 
