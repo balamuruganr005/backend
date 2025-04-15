@@ -54,10 +54,10 @@ def send_email_alert(subject, body):
         msg = MIMEMultipart()
         msg["From"] = SENDER_EMAIL
         msg["To"] = RECEIVER_EMAIL
-        msg["Subject"] = Header(subject)
+        msg["Subject"] = Header(subject, "utf-8")  # also specify utf-8 for subject
 
-        # Body with UTF-8 encoding (even emojis 🚨🔥 etc.)
-        body_part = MIMEText(body, "plain")
+        # Fix: Add UTF-8 encoding to support emojis and special characters
+        body_part = MIMEText(body, "plain", "utf-8")
         msg.attach(body_part)
 
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
