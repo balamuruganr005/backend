@@ -59,9 +59,9 @@ def send_email_alert(subject, body):
         msg = MIMEMultipart()
         msg["From"] = SENDER_EMAIL
         msg["To"] = RECEIVER_EMAIL
-        msg["Subject"] = Header(subject, "utf-8")
+        msg["Subject"] = Header(subject,)
 
-        body_part = MIMEText(body, "plain", "utf-8")
+        body_part = MIMEText(body, "plain",)
         msg.attach(body_part)
 
         # Now initialize the SMTP server inside the 'with' statement
