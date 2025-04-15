@@ -30,7 +30,7 @@ def insert_alert_to_db(ip, message, source="DNN Detection"):
 
 # Email credentials
 def send_email_alert(subject, body):
-    msg = MIMEText(body, _charset="utf-8")  # 🧠 Key Fix
+    msg = MIMEText(body, _charset="utf-8")  #  Key Fix
     msg["Subject"] = subject
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
