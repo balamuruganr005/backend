@@ -15,21 +15,34 @@ RECEIVER_EMAIL = "iambalamurugan05@gmail.com"
 from datetime import datetime
 import psycopg2
 
+from datetime import datetime
+import psycopg2
+
 def insert_alert_to_db(ip, message, source="DNN Detection"):
     try:
+        # Log the inputs before executing the SQL query
+        print(f"Inserting alert: IP={ip}, Message={message}, Timestamp={timestamp}, Source={source}")
+
+        # Connect to the database
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
+        
+        # Get the current timestamp
         timestamp = datetime.now()
+        
+        # Execute the insert statement
         cur.execute(
             "INSERT INTO alerts (ip, message, timestamp, source) VALUES (%s, %s, %s, %s)",
             (ip, message, timestamp, source)
         )
+        
+        # Commit the transaction
         conn.commit()
         conn.close()
         print("✅ Alert inserted into DB.")
     except Exception as e:
         print("❌ Failed to insert alert:", e)
-print(f"Inserting alert: IP={ip}, Message={message}, Timestamp={timestamp}, Source={source}")
+
 
 
 def send_email_alert(subject, body):
