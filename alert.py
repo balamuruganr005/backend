@@ -54,9 +54,10 @@ def send_email_alert(subject, body):
         msg = MIMEMultipart()
         msg["From"] = SENDER_EMAIL
         msg["To"] = RECEIVER_EMAIL
-        msg["Subject"] = Header(subject, "utf-8")  # also specify utf-8 for subject
+        # ✅ Specify UTF-8 for the subject as well
+        msg["Subject"] = Header(subject, "utf-8")
 
-        # Fix: Add UTF-8 encoding to support emojis and special characters
+        # ✅ Fix: Attach body with UTF-8 encoding
         body_part = MIMEText(body, "plain", "utf-8")
         msg.attach(body_part)
 
