@@ -512,76 +512,84 @@ def get_alert_history():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2"
+DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_logs"
 
+# Email credentials
 SENDER_EMAIL = "iambalamurugan005@gmail.com"
 APP_PASSWORD = "hqpsaxhskmahouyx"
 RECEIVER_EMAIL = "iambalamurugan05@gmail.com"
 
-monitoring = False  # Global flag to avoid duplicate threads
+# Function to fetch alerts from the alerts table
+def fetch_alerts():
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM alerts ORDER BY timestamp DESC LIMIT 100")
+    data = cur.fetchall()
+    columns = [desc[0] for desc in cur.description]
+    conn.close()
+    return columns, data
 
-@app.route("/monitor", methods=["GET"])
-def monitor_ddos():
-    global monitoring
+# Function to send the email with the CSV attachment
+def send_email_with_csv(subject, body, columns, rows):
+    msg = MIMEMultipart()
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = RECEIVER_EMAIL
+    msg["Subject"] = subject
 
-    if monitoring:
-        return "🔄 Monitor already running."
+    msg.attach(MIMEText(body, "plain"))
 
-    def monitor_loop():
-        global monitoring
-        monitoring = True
+    csvfile = StringIO()
+    writer = csv.writer(csvfile)
+    writer.writerow(columns)
+    writer.writerows(rows)
+    csv_data = csvfile.getvalue()
 
-        while True:
-            try:
-                conn = psycopg2.connect(DB_URL)
-                cur = conn.cursor()
-                cur.execute("SELECT * FROM traffic WHERE status = 1 OR status = 'suspicious' OR status = 'malicious'")
-                bad_traffic = cur.fetchall()
+    attachment = MIMEApplication(csv_data, Name="alert_history.csv")
+    attachment['Content-Disposition'] = 'attachment; filename="alert_history.csv"'
+    msg.attach(attachment)
 
-                if not bad_traffic:
-                    print("✅ Traffic is safe. Stopping monitor.")
-                    monitoring = False
-                    break  # Stop monitoring
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(SENDER_EMAIL, APP_PASSWORD)
+        server.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, msg.as_string())
 
-                # Create CSV from /alert-history
-                cur.execute("SELECT id, ip, message, timestamp, source FROM alerts ORDER BY timestamp DESC")
-                alerts = cur.fetchall()
+# Continuous monitor function
+def monitor_traffic():
+    while True:
+        try:
+            conn = psycopg2.connect(DB_URL)
+            cur = conn.cursor()
 
-                csv_buffer = StringIO()
-                writer = csv.writer(csv_buffer)
-                writer.writerow(["ID", "IP", "Message", "Timestamp", "Source"])
-                for alert in alerts:
-                    writer.writerow(alert)
+            # Check for bad traffic in traffic_logs table
+            cur.execute("SELECT COUNT(*) FROM traffic_logs WHERE status=1 OR status ILIKE 'suspicious' OR status ILIKE 'malicious'")
+            count = cur.fetchone()[0]
+            conn.close()
 
-                csv_content = csv_buffer.getvalue()
+            if count >= 1:
+                # Fetch the alerts and send the email with CSV attachment
+                columns, rows = fetch_alerts()
+                send_email_with_csv(
+                    subject="DDOS/DOS detected immediate action required",
+                    body="Attached is the latest DDoS alert history. Please investigate immediately.",
+                    columns=columns,
+                    rows=rows
+                )
 
-                # Send email with CSV attached
-                msg = MIMEMultipart()
-                msg["From"] = SENDER_EMAIL
-                msg["To"] = RECEIVER_EMAIL
-                msg["Subject"] = "DDOS/DOS detected immediate action required"
-
-                body = MIMEText("🚨 DDOS/DOS traffic detected.\n\nAttached: Complete alert history.", "plain")
-                msg.attach(body)
-
-                part = MIMEApplication(csv_content, Name="alert_history.csv")
-                part['Content-Disposition'] = 'attachment; filename="alert_history.csv"'
-                msg.attach(part)
-
-                with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                    server.login(SENDER_EMAIL, APP_PASSWORD)
-                    server.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, msg.as_string())
-
-                print("📧 Alert email sent.")
-                conn.close()
-
-            except Exception as e:
-                print("❌ Monitor error:", e)
-
+            # Wait for 15 seconds before checking again
             time.sleep(15)
+        except Exception as e:
+            print(f"❌ Error during monitoring: {e}")
 
-    threading.Thread(target=monitor_loop).start()
-    return "🚀 Monitor started."
+# Start the monitoring in a separate thread
+@app.before_first_request
+def start_monitoring():
+    monitor_thread = threading.Thread(target=monitor_traffic)
+    monitor_thread.daemon = True
+    monitor_thread.start()
+
+# Simple /monitor route to confirm monitoring is active
+@app.route("/monitor", methods=["GET"])
+def monitor_route():
+    return jsonify({"status": "monitoring_active", "message": "Monitoring is running in the background every 15 seconds."})
 
 
 # Run the Flask app
