@@ -486,6 +486,31 @@ def test_email_alert():
     trigger_alert(ip, message)  # Call the trigger_alert function
     return "Alert Triggered"
 
+DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2"
+
+@app.route("/alert-history", methods=["GET"])
+def get_alert_history():
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute("SELECT id, ip, message, timestamp, source FROM alerts ORDER BY timestamp DESC")
+        rows = cur.fetchall()
+        conn.close()
+
+        alert_list = []
+        for row in rows:
+            alert_list.append({
+                "id": row[0],
+                "ip": row[1],
+                "message": row[2],
+                "timestamp": row[3].strftime("%Y-%m-%d %H:%M:%S"),
+                "source": row[4]
+            })
+
+        return jsonify(alert_list), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Run the Flask app
 if __name__ == "__main__":
