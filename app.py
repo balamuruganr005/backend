@@ -406,7 +406,7 @@ def traffic_summary():
 
         # Count suspicious or malicious users
         cursor.execute("""
-            SELECT COUNT(*) FROM traffic_logs 
+            SELECT COUNT(*) FROM traffic_logs2 
             WHERE status = 'malicious' OR status = '1' OR status = 'suspicious'
         """)
         malicious_count = cursor.fetchone()[0]
