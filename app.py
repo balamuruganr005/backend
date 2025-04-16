@@ -351,8 +351,7 @@ def detect_anomaly():
 
 
 
-# Define DB URL
-# Define this only ONCE at the top of your app.py
+## Define DB URL
 DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2"
 
 @app.route('/traffic-summary', methods=['GET'])
@@ -361,17 +360,17 @@ def traffic_summary():
         conn = psycopg2.connect(DB_URL, sslmode='require')
         cursor = conn.cursor()
 
-        # Count legit users (status = 0)
+        # Count legit users (status = 'normal')
         cursor.execute("""
             SELECT COUNT(*) FROM traffic_logs2 
-            WHERE status = 0
+            WHERE status = 'normal'
         """)
         legit_count = cursor.fetchone()[0]
 
-        # Count suspicious or malicious users (status = 1 or 2)
+        # Count suspicious or malicious users
         cursor.execute("""
             SELECT COUNT(*) FROM traffic_logs2 
-            WHERE status IN (1, 2)
+            WHERE status IN ('suspicious', 'malicious')
         """)
         malicious_count = cursor.fetchone()[0]
 
@@ -386,6 +385,7 @@ def traffic_summary():
     except Exception as e:
         print(f"Error in /traffic-summary: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 
