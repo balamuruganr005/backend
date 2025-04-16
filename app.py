@@ -349,17 +349,30 @@ def detect_anomaly():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-DB_URL = postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2
+import psycopg2
+
+# Define DB URL
+DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2"
+
 @app.route('/traffic-summary', methods=['GET'])
 def traffic_summary():
     try:
+        # Connect to PostgreSQL
         conn = psycopg2.connect(DB_URL, sslmode='require')
         cursor = conn.cursor()
 
-        cursor.execute("SELECT COUNT(*) FROM traffic_logs WHERE status = 'normal' OR status = '0';")
+        # Count legit traffic (status = 'normal' or '0')
+        cursor.execute("""
+            SELECT COUNT(*) FROM traffic_logs 
+            WHERE status = 'normal' OR status = '0'
+        """)
         legit_count = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM traffic_logs WHERE status = 'malicious' OR status = '1' OR status = 'suspicious';")
+        # Count malicious traffic (status = 'malicious', '1', or 'suspicious')
+        cursor.execute("""
+            SELECT COUNT(*) FROM traffic_logs 
+            WHERE status = 'malicious' OR status = '1' OR status = 'suspicious'
+        """)
         malicious_count = cursor.fetchone()[0]
 
         cursor.close()
@@ -373,6 +386,7 @@ def traffic_summary():
     except Exception as e:
         print(f"Error in /traffic-summary: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 
