@@ -44,7 +44,7 @@ c = conn.cursor()
 
 # Create table if not exists (updated to match all 18 columns)
 c.execute("""
-    CREATE TABLE IF NOT EXISTS traffic_logs22 (
+    CREATE TABLE IF NOT EXISTS traffic_logs2 (
         id SERIAL PRIMARY KEY,
         ip TEXT,
         timestamp REAL,
@@ -156,7 +156,7 @@ def home():
         elif request_size > 5000:
             status = "suspicious"
 
-        c.execute("""SELECT COUNT(*) FROM traffic_logs22 WHERE ip = %s AND timestamp > %s""",
+        c.execute("""SELECT COUNT(*) FROM traffic_logs2 WHERE ip = %s AND timestamp > %s""",
                   (ip, time.time() - 60))
         request_count = c.fetchone()[0]
         if request_count > 50:
@@ -171,7 +171,7 @@ def home():
         if "bot" in user_agent.lower() or "crawl" in user_agent.lower():
             status = "suspicious"
 
-        c.execute("""SELECT COUNT(*) FROM traffic_logs22 WHERE timestamp > %s""",
+        c.execute("""SELECT COUNT(*) FROM traffic_logs2 WHERE timestamp > %s""",
                   (time.time() - 5,))
         recent_requests = c.fetchone()[0]
         if recent_requests > 100:
@@ -190,7 +190,7 @@ def home():
         invalid_headers = False  # You can implement actual logic here
 
         c.execute("""
-            INSERT INTO traffic_logs22 
+            INSERT INTO traffic_logs2 
             (ip, timestamp, request_size, status, location, user_agent, request_type, 
              high_request_rate, small_payload, large_payload, spike_in_requests, 
              repeated_access, unusual_user_agent, invalid_headers, destination_port, 
@@ -214,7 +214,7 @@ def get_traffic_data():
                        request_type, high_request_rate, small_payload, large_payload, 
                        spike_in_requests, repeated_access, unusual_user_agent, 
                        invalid_headers, destination_port, country, city 
-                FROM traffic_logs22
+                FROM traffic_logs2
             """)
             rows = c.fetchall()
 
@@ -227,7 +227,7 @@ def get_traffic_data():
 
             data = [dict(zip(columns, row)) for row in rows]
 
-        return jsonify({"traffic_logs22": data})
+        return jsonify({"traffic_logs2": data})
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -236,7 +236,7 @@ def get_traffic_data():
 def traffic_graph():
     try:
         with conn.cursor() as c:
-            c.execute("SELECT timestamp FROM traffic_logs22 ORDER BY timestamp ASC")
+            c.execute("SELECT timestamp FROM traffic_logs2 ORDER BY timestamp ASC")
             rows = c.fetchall()
 
         if not rows:
@@ -292,7 +292,7 @@ def insert_traffic_data():
         # Insert data
         with conn.cursor() as c:
             c.execute("""
-                INSERT INTO traffic_logs22 (
+                INSERT INTO traffic_logs2 (
                     ip, timestamp, request_size, status, location, user_agent, request_type, 
                     high_request_rate, small_payload, large_payload, spike_in_requests, 
                     repeated_access, unusual_user_agent, invalid_headers, destination_port, 
@@ -325,7 +325,7 @@ def detect_anomaly():
         # Get number of requests per IP in the last 60 seconds
         c.execute("""
             SELECT ip, COUNT(*) as request_count
-            FROM traffic_logs22
+            FROM traffic_logs2
             WHERE timestamp > %s
             GROUP BY ip
             ORDER BY request_count DESC
