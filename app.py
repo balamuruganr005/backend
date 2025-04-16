@@ -44,7 +44,7 @@ c = conn.cursor()
 
 # Create table if not exists (updated to match all 18 columns)
 c.execute("""
-    CREATE TABLE IF NOT EXISTS traffic_logs (
+    CREATE TABLE IF NOT EXISTS traffic_logs22 (
         id SERIAL PRIMARY KEY,
         ip TEXT,
         timestamp REAL,
@@ -156,7 +156,7 @@ def home():
         elif request_size > 5000:
             status = "suspicious"
 
-        c.execute("""SELECT COUNT(*) FROM traffic_logs WHERE ip = %s AND timestamp > %s""",
+        c.execute("""SELECT COUNT(*) FROM traffic_logs22 WHERE ip = %s AND timestamp > %s""",
                   (ip, time.time() - 60))
         request_count = c.fetchone()[0]
         if request_count > 50:
@@ -171,7 +171,7 @@ def home():
         if "bot" in user_agent.lower() or "crawl" in user_agent.lower():
             status = "suspicious"
 
-        c.execute("""SELECT COUNT(*) FROM traffic_logs WHERE timestamp > %s""",
+        c.execute("""SELECT COUNT(*) FROM traffic_logs22 WHERE timestamp > %s""",
                   (time.time() - 5,))
         recent_requests = c.fetchone()[0]
         if recent_requests > 100:
@@ -190,7 +190,7 @@ def home():
         invalid_headers = False  # You can implement actual logic here
 
         c.execute("""
-            INSERT INTO traffic_logs 
+            INSERT INTO traffic_logs22 
             (ip, timestamp, request_size, status, location, user_agent, request_type, 
              high_request_rate, small_payload, large_payload, spike_in_requests, 
              repeated_access, unusual_user_agent, invalid_headers, destination_port, 
@@ -214,7 +214,7 @@ def get_traffic_data():
                        request_type, high_request_rate, small_payload, large_payload, 
                        spike_in_requests, repeated_access, unusual_user_agent, 
                        invalid_headers, destination_port, country, city 
-                FROM traffic_logs
+                FROM traffic_logs22
             """)
             rows = c.fetchall()
 
@@ -227,7 +227,7 @@ def get_traffic_data():
 
             data = [dict(zip(columns, row)) for row in rows]
 
-        return jsonify({"traffic_logs": data})
+        return jsonify({"traffic_logs22": data})
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -236,7 +236,7 @@ def get_traffic_data():
 def traffic_graph():
     try:
         with conn.cursor() as c:
-            c.execute("SELECT timestamp FROM traffic_logs ORDER BY timestamp ASC")
+            c.execute("SELECT timestamp FROM traffic_logs22 ORDER BY timestamp ASC")
             rows = c.fetchall()
 
         if not rows:
@@ -292,7 +292,7 @@ def insert_traffic_data():
         # Insert data
         with conn.cursor() as c:
             c.execute("""
-                INSERT INTO traffic_logs (
+                INSERT INTO traffic_logs22 (
                     ip, timestamp, request_size, status, location, user_agent, request_type, 
                     high_request_rate, small_payload, large_payload, spike_in_requests, 
                     repeated_access, unusual_user_agent, invalid_headers, destination_port, 
@@ -325,7 +325,7 @@ def detect_anomaly():
         # Get number of requests per IP in the last 60 seconds
         c.execute("""
             SELECT ip, COUNT(*) as request_count
-            FROM traffic_logs
+            FROM traffic_logs22
             WHERE timestamp > %s
             GROUP BY ip
             ORDER BY request_count DESC
@@ -350,7 +350,7 @@ def detect_anomaly():
         return jsonify({"error": str(e)}), 500
 
 import psycopg2
-def create_traffic_logs_table():
+def create_traffic_logs2_table():
     try:
         conn = psycopg2.connect(DB_URL, sslmode='require')
         cursor = conn.cursor()
@@ -381,10 +381,10 @@ def create_traffic_logs_table():
         conn.commit()
         cursor.close()
         conn.close()
-        print("✅ Table 'traffic_logs' created or already exists.")
+        print("✅ Table 'traffic_logs2' created or already exists.")
 
     except Exception as e:
-        print(f"❌ Failed to create 'traffic_logs' table: {e}")
+        print(f"❌ Failed to create 'traffic_logs2' table: {e}")
 
 # Define DB URL
 # Define this only ONCE at the top of your app.py
@@ -430,7 +430,7 @@ def debug_status():
         conn = psycopg2.connect(DATABASE_URL, sslmode='require')
         cursor = conn.cursor()
 
-        cursor.execute("SELECT status, COUNT(*) FROM traffic_logs GROUP BY status;")
+        cursor.execute("SELECT status, COUNT(*) FROM traffic_logs2 GROUP BY status;")
         rows = cursor.fetchall()
 
         result = {status: count for status, count in rows}
@@ -448,7 +448,7 @@ def dnn_status():
     try:
         conn = get_connect_db()
         cur = conn.cursor()
-        cur.execute("SELECT timestamp, status FROM traffic_logs ORDER BY timestamp DESC LIMIT 100;")
+        cur.execute("SELECT timestamp, status FROM traffic_logs2 ORDER BY timestamp DESC LIMIT 100;")
         rows = cur.fetchall()
         result = [{"timestamp": r[0], "status": r[1]} for r in rows]
         return jsonify(result)
@@ -476,7 +476,7 @@ def connect_db():
 def get_traffic_data():
     conn = connect_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM traffic_logs WHERE timestamp > %s", (datetime.now() - timedelta(minutes=15),))
+    cursor.execute("SELECT * FROM traffic_logs2 WHERE timestamp > %s", (datetime.now() - timedelta(minutes=15),))
     data = cursor.fetchall()
     conn.close()
     return data
@@ -562,7 +562,7 @@ def get_alert_history():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_logs"
+DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_logs2"
 
 # Email credentials
 SENDER_EMAIL = "iambalamurugan005@gmail.com"
@@ -573,7 +573,7 @@ RECEIVER_EMAIL = "iambalamurugan05@gmail.com"
 def fetch_alerts():
     conn = psycopg2.connect(DB_URL)
     cur = conn.cursor()
-    cur.execute("SELECT * FROM traffic_logs ORDER BY timestamp DESC LIMIT 100")
+    cur.execute("SELECT * FROM traffic_logs2 ORDER BY timestamp DESC LIMIT 100")
     data = cur.fetchall()
     columns = [desc[0] for desc in cur.description]
     conn.close()
@@ -609,8 +609,8 @@ def monitor_traffic():
             conn = psycopg2.connect(DB_URL)
             cur = conn.cursor()
 
-            # Check for bad traffic in traffic_logs table
-            cur.execute("SELECT COUNT(*) FROM traffic_logs WHERE status=1 OR status ILIKE 'suspicious' OR status ILIKE 'malicious'")
+            # Check for bad traffic in traffic_logs2 table
+            cur.execute("SELECT COUNT(*) FROM traffic_logs2 WHERE status=1 OR status ILIKE 'suspicious' OR status ILIKE 'malicious'")
             count = cur.fetchone()[0]
             conn.close()
 
@@ -643,6 +643,6 @@ def monitor_route():
 
 # Run the Flask app
 if __name__ == "__main__":
-    create_traffic_logs_table()
+    create_traffic_logs2_table()
     start_monitoring()
     app.run(host="0.0.0.0", port=5000, debug=True)
