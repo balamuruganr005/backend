@@ -350,6 +350,41 @@ def detect_anomaly():
         return jsonify({"error": str(e)}), 500
 
 import psycopg2
+def create_traffic_logs_table():
+    try:
+        conn = psycopg2.connect(DB_URL, sslmode='require')
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS traffic_logs2 (
+                id SERIAL PRIMARY KEY,
+                ip TEXT,
+                timestamp REAL,
+                request_size INTEGER,
+                status TEXT,
+                location TEXT,
+                user_agent TEXT,
+                request_type TEXT,
+                high_request_rate BOOLEAN,
+                small_payload BOOLEAN,
+                large_payload BOOLEAN,
+                spike_in_requests BOOLEAN,
+                repeated_access BOOLEAN,
+                unusual_user_agent BOOLEAN,
+                invalid_headers BOOLEAN,
+                destination_port TEXT,
+                country TEXT,
+                city TEXT
+            );
+        """)
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("✅ Table 'traffic_logs' created or already exists.")
+
+    except Exception as e:
+        print(f"❌ Failed to create 'traffic_logs' table: {e}")
 
 # Define DB URL
 # Define this only ONCE at the top of your app.py
@@ -364,7 +399,7 @@ def traffic_summary():
 
         # Count legit users
         cursor.execute("""
-            SELECT COUNT(*) FROM traffic_logs 
+            SELECT COUNT(*) FROM traffic_logs2 
             WHERE status = 'normal' OR status = '0'
         """)
         legit_count = cursor.fetchone()[0]
@@ -608,5 +643,6 @@ def monitor_route():
 
 # Run the Flask app
 if __name__ == "__main__":
+    create_traffic_logs_table()
     start_monitoring()
     app.run(host="0.0.0.0", port=5000, debug=True)
