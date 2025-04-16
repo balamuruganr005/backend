@@ -349,11 +349,11 @@ def detect_anomaly():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
+DB_URL = postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2
 @app.route('/traffic-summary', methods=['GET'])
 def traffic_summary():
     try:
-        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+        conn = psycopg2.connect(DB_URL, sslmode='require')
         cursor = conn.cursor()
 
         cursor.execute("SELECT COUNT(*) FROM traffic_logs WHERE status = 'normal' OR status = '0';")
