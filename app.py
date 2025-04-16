@@ -527,7 +527,7 @@ def get_alert_history():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_logs2"
+DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2"
 
 # Email credentials
 SENDER_EMAIL = "iambalamurugan005@gmail.com"
