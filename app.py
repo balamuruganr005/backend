@@ -349,42 +349,7 @@ def detect_anomaly():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-import psycopg2
-def create_traffic_logs2_table():
-    try:
-        conn = psycopg2.connect(DB_URL, sslmode='require')
-        cursor = conn.cursor()
 
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS traffic_logs2 (
-                id SERIAL PRIMARY KEY,
-                ip TEXT,
-                timestamp REAL,
-                request_size INTEGER,
-                status TEXT,
-                location TEXT,
-                user_agent TEXT,
-                request_type TEXT,
-                high_request_rate BOOLEAN,
-                small_payload BOOLEAN,
-                large_payload BOOLEAN,
-                spike_in_requests BOOLEAN,
-                repeated_access BOOLEAN,
-                unusual_user_agent BOOLEAN,
-                invalid_headers BOOLEAN,
-                destination_port TEXT,
-                country TEXT,
-                city TEXT
-            );
-        """)
-
-        conn.commit()
-        cursor.close()
-        conn.close()
-        print("✅ Table 'traffic_logs2' created or already exists.")
-
-    except Exception as e:
-        print(f"❌ Failed to create 'traffic_logs2' table: {e}")
 
 # Define DB URL
 # Define this only ONCE at the top of your app.py
@@ -393,21 +358,20 @@ DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cv
 @app.route('/traffic-summary', methods=['GET'])
 def traffic_summary():
     try:
-        # Connect to your PostgreSQL database
         conn = psycopg2.connect(DB_URL, sslmode='require')
         cursor = conn.cursor()
 
-        # Count legit users
+        # Count legit users (status = 0)
         cursor.execute("""
             SELECT COUNT(*) FROM traffic_logs2 
-            WHERE status = 'normal' OR status = '0'
+            WHERE status = 0
         """)
         legit_count = cursor.fetchone()[0]
 
-        # Count suspicious or malicious users
+        # Count suspicious or malicious users (status = 1 or 2)
         cursor.execute("""
             SELECT COUNT(*) FROM traffic_logs2 
-            WHERE status = 'malicious' OR status = '1' OR status = 'suspicious'
+            WHERE status IN (1, 2)
         """)
         malicious_count = cursor.fetchone()[0]
 
@@ -422,6 +386,7 @@ def traffic_summary():
     except Exception as e:
         print(f"Error in /traffic-summary: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 @app.route("/debug-status", methods=["GET"])
