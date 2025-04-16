@@ -350,28 +350,30 @@ def detect_anomaly():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/traffic-summary', methods=['GET'])
+@app.route("/traffic-summary", methods=["GET"])
 def traffic_summary():
     try:
-        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
-        cursor = conn.cursor()
+        conn = db.connect()
+        cur = conn.cursor()
 
-        cursor.execute("SELECT status, COUNT(*) FROM traffic_logs GROUP BY status;")
-        rows = cursor.fetchall()
+        cur.execute("SELECT COUNT(*) FROM traffic WHERE status = 'normal' OR status = '0';")
+        legit_count = cur.fetchone()[0]
 
-        summary = {"legit": 0, "malicious": 0}
-        for status, count in rows:
-            if str(status).lower() in ["0", "legit", "good"]:
-                summary["legit"] += count
-            elif str(status).lower() in ["1", "malicious", "bad", "suspicious"]:
-                summary["malicious"] += count
+        cur.execute("SELECT COUNT(*) FROM traffic WHERE status = 'malicious' OR status = '1' OR status = 'suspicious';")
+        malicious_count = cur.fetchone()[0]
 
-        cursor.close()
+        cur.close()
         conn.close()
-        return jsonify(summary)
+
+        return jsonify({
+            "legit": legit_count,
+            "malicious": malicious_count
+        })
 
     except Exception as e:
+        print(f"Error in /traffic-summary: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 
