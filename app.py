@@ -349,6 +349,30 @@ def detect_anomaly():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/stop-attack', methods=['POST'])
+def stop_attack():
+    try:
+        conn = connect_db()
+        cur = conn.cursor()
+
+        # Update malicious and suspicious traffic entries to "blocked"
+        cur.execute("""
+            UPDATE traffic
+            SET status = 'blocked'
+            WHERE status IN ('malicious', 'suspicious') OR status = 1
+        """)
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify({'message': 'Attack blocked successfully'}), 200
+
+    except Exception as e:
+        print(f"Error in stop_attack: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 
 
 ## Define DB URL
