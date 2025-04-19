@@ -357,7 +357,7 @@ def stop_attack():
 
         # Update malicious and suspicious traffic entries to "blocked"
         cur.execute("""
-            UPDATE traffic
+            UPDATE traffic_logs2
             SET status = 'blocked'
             WHERE status IN ('malicious', 'suspicious') OR status = 1
         """)
