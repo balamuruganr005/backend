@@ -349,7 +349,7 @@ def detect_anomaly():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/stop-attack', methods=['POST'])
+@app.route('/stop-attack', methods=['GET','POST'])
 def stop_attack():
     try:
         conn = connect_db()
