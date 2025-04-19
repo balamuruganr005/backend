@@ -352,25 +352,39 @@ def detect_anomaly():
 @app.route('/stop-attack', methods=['GET','POST'])
 def stop_attack():
     try:
-        conn = connect_db()
-        cur = conn.cursor()
-
-        # Update malicious and suspicious traffic entries to "blocked"
-        cur.execute("""
+        cursor = conn.cursor()
+        # Reset status to 'normal' for malicious and suspicious entries
+        cursor.execute("""
             UPDATE traffic_logs2
-            SET status = 'blocked'
-            WHERE status IN ('malicious', 'suspicious') OR status = 1
+            SET status = 'normal'
+            WHERE status IN ('malicious', 'suspicious')
         """)
-
         conn.commit()
-        cur.close()
-        conn.close()
-
-        return jsonify({'message': 'Attack blocked successfully'}), 200
-
+        cursor.close()
+        return jsonify({"message": "Attack stopped successfully!"}), 200
     except Exception as e:
-        print(f"Error in stop_attack: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/detect-attack', methods=['GET'])
+def detect_attack():
+    try:
+        cursor = conn.cursor()
+        # Check if there are any malicious or suspicious entries
+        cursor.execute("""
+            SELECT COUNT(*) FROM traffic_logs2 
+            WHERE status IN ('malicious', 'suspicious')
+        """)
+        attack_count = cursor.fetchone()[0]
+        cursor.close()
+
+        if attack_count > 0:
+            return jsonify({"message": "Attack detected!", "attack_status": "ongoing"}), 200
+        else:
+            return jsonify({"message": "No attack detected", "attack_status": "safe"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 
 
