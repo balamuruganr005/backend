@@ -349,22 +349,6 @@ def detect_anomaly():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/stop-attack', methods=['GET','POST'])
-def stop_attack():
-    try:
-        cursor = conn.cursor()
-        # Reset status to 'normal' for malicious and suspicious entries
-        cursor.execute("""
-            UPDATE traffic_logs2
-            SET status = 'normal'
-            WHERE status IN ('malicious', 'suspicious')
-        """)
-        conn.commit()
-        cursor.close()
-        return jsonify({"message": "Attack stopped successfully!"}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 
 @app.route('/detect-attack', methods=['GET'])
 def detect_attack():
