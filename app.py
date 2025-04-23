@@ -415,34 +415,6 @@ def detect_attack():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-conn = psycopg2.connect("postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2")
-cursor = conn.cursor()
-
-@app.route('/stop-attack', methods=['GET', 'POST'])
-def stop_attack():
-    if request.method == 'GET':
-        return jsonify({
-            "message": "This endpoint is used to stop DDoS attacks. Send a POST request with `request_size` < 90 to block attack traffic."
-        }), 200
-
-    if request.method == 'POST':
-        request_size = request.json.get('request_size')
-        try:
-            if request_size and request_size < 90:
-                # Mark all small request sizes as blocked/stopped
-                cursor.execute("""
-                    UPDATE traffic_logs2
-                    SET status = 'blocked'
-                    WHERE request_size < %s AND (status = '1' OR status = 'suspicious' OR status = 'malicious' OR status = '2')
-                """, (request_size,))
-                conn.commit()
-                return jsonify({"message": f"✅ Attack stopped: blocked all requests with size < {request_size}."}), 200
-            else:
-                return jsonify({"message": "❌ Request size not valid for stopping attack."}), 400
-        except Exception as e:
-            print("Error stopping attack:", e)
-            return jsonify({"error": str(e)}), 500
-
 
 ## Define DB URL
 DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2"
