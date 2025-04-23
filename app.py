@@ -421,16 +421,38 @@ cursor = conn.cursor()
 @app.route('/stop-attack', methods=['GET', 'POST'])
 def stop_attack():
     if request.method == 'GET':
-        return jsonify({
-            "message": "📍 This endpoint is used to stop DDoS attacks.",
-            "usage": "Send a POST request with JSON body: { 'request_size': <int> } to block traffic with request_size < 90"
-        }), 200
+        try:
+            cursor.execute("""
+                SELECT ip, time, request_size, user_agent, status
+                FROM traffic_logs2
+                WHERE status = 'blocked'
+                ORDER BY time DESC
+                LIMIT 50
+            """)
+            blocked_users = cursor.fetchall()
+
+            blocked_list = [
+                {
+                    "ip": row[0],
+                    "time": str(row[1]),
+                    "request_size": row[2],
+                    "user_agent": row[3],
+                    "status": row[4]
+                } for row in blocked_users
+            ]
+
+            return jsonify({
+                "message": "📍 This endpoint stops attacks. Send POST with {'request_size': <int>} to block new ones.",
+                "previously_blocked": blocked_list
+            }), 200
+        except Exception as e:
+            print("GET /stop-attack error:", e)
+            return jsonify({"error": str(e)}), 500
 
     if request.method == 'POST':
         request_size = request.json.get('request_size')
         try:
             if request_size and request_size < 90:
-                # Fetch details of entries that will be blocked
                 cursor.execute("""
                     SELECT ip, time, request_size, user_agent, status
                     FROM traffic_logs2
@@ -438,7 +460,6 @@ def stop_attack():
                 """, (request_size,))
                 blocked_users = cursor.fetchall()
 
-                # Update their status to 'blocked'
                 cursor.execute("""
                     UPDATE traffic_logs2
                     SET status = 'blocked'
@@ -446,7 +467,6 @@ def stop_attack():
                 """, (request_size,))
                 conn.commit()
 
-                # Format blocked user data
                 blocked_list = [
                     {
                         "ip": row[0],
@@ -459,15 +479,14 @@ def stop_attack():
                 ]
 
                 return jsonify({
-                    "message": f"✅ Attack stopped: {len(blocked_list)} IPs blocked with request size < {request_size}.",
+                    "message": f"✅ Attack stopped: {len(blocked_list)} new IPs blocked (size < {request_size}).",
                     "blocked_users": blocked_list
                 }), 200
             else:
-                return jsonify({"message": "❌ Request size not valid for stopping attack."}), 400
+                return jsonify({"message": "❌ Invalid request_size for blocking attack."}), 400
         except Exception as e:
-            print("Error stopping attack:", e)
+            print("POST /stop-attack error:", e)
             return jsonify({"error": str(e)}), 500
-
 
 
 ## Define DB URL
