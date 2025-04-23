@@ -142,43 +142,25 @@ def get_location(ip):
 def home():
     timestamp = time.time()
     ips = get_client_ips()
-    request_size = len(str(request.data))
+    request_size = len(request.data)  # ✅ Accurate byte size
     user_agent = request.headers.get("User-Agent", "unknown")
     request_type = request.method
 
     for ip in ips:
-        status = "normal"
         destination_port = int(request.environ.get('REMOTE_PORT', 443))
 
-        # Rules
-        if request_size < 50:
-            status = "suspicious"
-        elif request_size > 5000:
-            status = "suspicious"
+        # Get location info
+        location, city, country = get_location(ip)
 
+        # Get request count for the IP in the past 60 seconds
         c.execute("""SELECT COUNT(*) FROM traffic_logs2 WHERE ip = %s AND timestamp > %s""",
                   (ip, time.time() - 60))
         request_count = c.fetchone()[0]
-        if request_count > 50:
-            status = "suspicious"
 
-        if ip in MALICIOUS_IPS:
-            status = "malicious"
-            request_size = 1500
-        elif ip in BLOCKED_IPS:
-            status = "blocked"
-
-        if "bot" in user_agent.lower() or "crawl" in user_agent.lower():
-            status = "suspicious"
-
+        # Get total requests in the past 5 seconds (for spike detection)
         c.execute("""SELECT COUNT(*) FROM traffic_logs2 WHERE timestamp > %s""",
                   (time.time() - 5,))
         recent_requests = c.fetchone()[0]
-        if recent_requests > 100:
-            status = "malicious"
-
-        # Get location data
-        location, city, country = get_location(ip)
 
         # Behavioral flags
         high_request_rate = request_count > 100
@@ -186,9 +168,21 @@ def home():
         large_payload = request_size > 10000
         spike_in_requests = recent_requests > 100
         repeated_access = request_count > 10
-        unusual_user_agent = "bot" in user_agent.lower()
-        invalid_headers = False  # You can implement actual logic here
+        unusual_user_agent = "bot" in user_agent.lower() or "crawl" in user_agent.lower()
+        invalid_headers = False  # Optional future check
 
+        # --- Prioritized status detection ---
+        if ip in MALICIOUS_IPS or spike_in_requests:
+            status = "malicious"
+            request_size = max(request_size, 1500)  # Normalize for attack traffic
+        elif ip in BLOCKED_IPS:
+            status = "blocked"
+        elif request_size < 50 or request_size > 5000 or unusual_user_agent or request_count > 50:
+            status = "suspicious"
+        else:
+            status = "normal"
+
+        # Insert into traffic_logs2
         c.execute("""
             INSERT INTO traffic_logs2 
             (ip, timestamp, request_size, status, location, user_agent, request_type, 
@@ -203,6 +197,7 @@ def home():
         conn.commit()
 
     return jsonify({"message": "Request logged", "ips": ips, "size": request_size})
+
 
 
 @app.route("/traffic-data", methods=["GET"])
