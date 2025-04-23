@@ -251,10 +251,33 @@ def get_traffic_data():
                 "invalid_headers", "destination_port", "country", "city"
             ]
 
-            data = [dict(zip(columns, row)) for row in rows]
+            data = []
+            for row in rows:
+                entry = dict(zip(columns, row))
+
+                # 🔍 Real-time status override logic
+                size = entry["size"]
+                user_agent = entry["user_agent"].lower()
+                req_type = entry["request_type"]
+
+                suspicious_conditions = [
+                    size < 100,
+                    "sqlmap" in user_agent,
+                    "bot" in user_agent,
+                    req_type == "HEAD"
+                ]
+
+                if "malicious" in entry["status"].lower():
+                    entry["status"] = "malicious"
+                elif any(suspicious_conditions):
+                    entry["status"] = "suspicious"
+                else:
+                    entry["status"] = "normal"
+
+                data.append(entry)
 
         return jsonify({"traffic_logs2": data})
-    
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
