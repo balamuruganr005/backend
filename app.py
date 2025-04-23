@@ -428,19 +428,32 @@ def traffic_summary():
         conn = psycopg2.connect(DB_URL, sslmode='require')
         cursor = conn.cursor()
 
-        # Count legit users (status = 'normal')
+        # Fetch needed fields for logic
         cursor.execute("""
-            SELECT COUNT(*) FROM traffic_logs2 
-            WHERE status = 'normal'
+            SELECT request_size, user_agent, request_type, status FROM traffic_logs2
         """)
-        legit_count = cursor.fetchone()[0]
+        rows = cursor.fetchall()
 
-        # Count suspicious or malicious users
-        cursor.execute("""
-            SELECT COUNT(*) FROM traffic_logs2 
-            WHERE status IN ('suspicious', 'malicious')
-        """)
-        malicious_count = cursor.fetchone()[0]
+        legit_count = 0
+        malicious_count = 0
+
+        for size, user_agent, req_type, db_status in rows:
+            user_agent = user_agent.lower()
+
+            # Real-time logic
+            suspicious = (
+                size < 100 or
+                "sqlmap" in user_agent or
+                "bot" in user_agent or
+                req_type == "HEAD"
+            )
+
+            if "malicious" in db_status.lower():
+                malicious_count += 1
+            elif suspicious:
+                malicious_count += 1
+            else:
+                legit_count += 1
 
         cursor.close()
         conn.close()
@@ -453,6 +466,7 @@ def traffic_summary():
     except Exception as e:
         print(f"Error in /traffic-summary: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 
