@@ -422,21 +422,46 @@ cursor = conn.cursor()
 def stop_attack():
     if request.method == 'GET':
         return jsonify({
-            "message": "This endpoint is used to stop DDoS attacks. Send a POST request with `request_size` < 90 to block attack traffic."
+            "message": "📍 This endpoint is used to stop DDoS attacks.",
+            "usage": "Send a POST request with JSON body: { 'request_size': <int> } to block traffic with request_size < 90"
         }), 200
 
     if request.method == 'POST':
         request_size = request.json.get('request_size')
         try:
             if request_size and request_size < 90:
-                # Mark all small request sizes as blocked/stopped
+                # Fetch details of entries that will be blocked
+                cursor.execute("""
+                    SELECT ip, time, request_size, user_agent, status
+                    FROM traffic_logs2
+                    WHERE request_size < %s AND (status = '1' OR status = 'suspicious' OR status = 'malicious' OR status = '2')
+                """, (request_size,))
+                blocked_users = cursor.fetchall()
+
+                # Update their status to 'blocked'
                 cursor.execute("""
                     UPDATE traffic_logs2
                     SET status = 'blocked'
                     WHERE request_size < %s AND (status = '1' OR status = 'suspicious' OR status = 'malicious' OR status = '2')
                 """, (request_size,))
                 conn.commit()
-                return jsonify({"message": f"✅ Attack stopped: blocked all requests with size < {request_size}."}), 200
+
+                # Format blocked user data
+                blocked_list = [
+                    {
+                        "ip": row[0],
+                        "time": str(row[1]),
+                        "request_size": row[2],
+                        "user_agent": row[3],
+                        "old_status": row[4],
+                        "new_status": "blocked"
+                    } for row in blocked_users
+                ]
+
+                return jsonify({
+                    "message": f"✅ Attack stopped: {len(blocked_list)} IPs blocked with request size < {request_size}.",
+                    "blocked_users": blocked_list
+                }), 200
             else:
                 return jsonify({"message": "❌ Request size not valid for stopping attack."}), 400
         except Exception as e:
