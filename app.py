@@ -198,6 +198,37 @@ def home():
 
     return jsonify({"message": "Request logged", "ips": ips, "size": request_size})
 
+def analyze_traffic_entry(ip, request_size, user_agent, request_type):
+    """Analyze traffic and assign flags + status."""
+    status = "normal"
+
+    # Define status based on user agent and request behavior
+    if "sqlmap" in user_agent.lower() or "bot" in user_agent.lower() or request_type == "HEAD":
+        status = "suspicious"
+    if request_size < 50:
+        status = "suspicious"
+    elif request_size > 5000:
+        status = "suspicious"
+
+    # Behavioral flags
+    high_request_rate = False  # Update if needed from DB
+    small_payload = request_size < 100
+    large_payload = request_size > 1000
+    spike_in_requests = False
+    repeated_access = False
+    unusual_user_agent = "bot" in user_agent.lower() or "sqlmap" in user_agent.lower()
+    invalid_headers = False  # Optional: analyze headers
+
+    return {
+        "status": status,
+        "high_request_rate": high_request_rate,
+        "small_payload": small_payload,
+        "large_payload": large_payload,
+        "spike_in_requests": spike_in_requests,
+        "repeated_access": repeated_access,
+        "unusual_user_agent": unusual_user_agent,
+        "invalid_headers": invalid_headers
+    }
 
 
 @app.route("/traffic-data", methods=["GET"])
@@ -259,6 +290,7 @@ def traffic_graph():
 def insert_traffic_data():
     print("🔔 insert_traffic_data called")
     print("Payload:", request.get_json())
+
     try:
         data = request.get_json()
 
@@ -270,19 +302,14 @@ def insert_traffic_data():
         user_agent = data.get("user_agent", "unknown")
         timestamp = int(time.time())
 
-        # Default placeholders
+        # Default location placeholders
         location = data.get("location", "unknown")
         country = data.get("country", "unknown")
         city = data.get("city", "unknown")
 
-        # Flags – default to False for now
-        high_request_rate = False
-        small_payload = request_size < 100
-        large_payload = request_size > 1000
-        spike_in_requests = False
-        repeated_access = False
-        unusual_user_agent = "bot" in user_agent.lower()
-        invalid_headers = False  # Could be improved with header analysis
+        # Analyze and determine flags/status
+        analysis = analyze_traffic_entry(ip, request_size, user_agent, request_type)
+        status = analysis["status"]
 
         # Insert data
         with conn.cursor() as c:
@@ -299,17 +326,18 @@ def insert_traffic_data():
                     %s, %s
                 )
             """, (
-                ip, timestamp, request_size, "normal", location, user_agent, request_type,
-                high_request_rate, small_payload, large_payload, spike_in_requests,
-                repeated_access, unusual_user_agent, invalid_headers, destination_port,
-                country, city
+                ip, timestamp, request_size, status, location, user_agent, request_type,
+                analysis["high_request_rate"], analysis["small_payload"], analysis["large_payload"],
+                analysis["spike_in_requests"], analysis["repeated_access"], analysis["unusual_user_agent"],
+                analysis["invalid_headers"], destination_port, country, city
             ))
             conn.commit()
 
-        return jsonify({"message": "Traffic data logged successfully"}), 200
+        return jsonify({"message": f"Traffic data logged with status '{status}'"}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/detect-anomaly", methods=["GET"])
 def detect_anomaly():
