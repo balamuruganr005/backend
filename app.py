@@ -38,7 +38,7 @@ limiter = Limiter(
 )
 
 # PostgreSQL connection setup using your Render database connection string
-DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2')
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://traffic_db_3_user:BpkTnOLE2k4YMhYbAP8xZCUiyR39jqMp@dpg-d13jk18gjchc738uhvo0-a.oregon-postgres.render.com/traffic_db_3')
 conn = psycopg2.connect(DATABASE_URL, sslmode='require')
 c = conn.cursor()
 
@@ -417,7 +417,7 @@ def detect_attack():
 
 
 ## Define DB URL
-DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2"
+DB_URL = "postgresql://traffic_db_3_user:BpkTnOLE2k4YMhYbAP8xZCUiyR39jqMp@dpg-d13jk18gjchc738uhvo0-a.oregon-postgres.render.com/traffic_db_3"
 
 @app.route('/traffic-summary', methods=['GET'])
 def traffic_summary():
@@ -580,7 +580,7 @@ def test_email_alert():
     trigger_alert(ip, message)  # Call the trigger_alert function
     return "Alert Triggered"
 
-DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2"
+DB_URL = "postgresql://traffic_db_3_user:BpkTnOLE2k4YMhYbAP8xZCUiyR39jqMp@dpg-d13jk18gjchc738uhvo0-a.oregon-postgres.render.com/traffic_db_3"
 
 @app.route("/alert-history", methods=["GET"])
 def get_alert_history():
@@ -606,7 +606,7 @@ def get_alert_history():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-DB_URL = "postgresql://traffic_db_2_user:MBuTs1sQlPZawUwdU5lc6VAZtL3WrsUb@dpg-cvumdpbuibrs738cdp30-a.oregon-postgres.render.com/traffic_db_2"
+DB_URL = "postgresql://traffic_db_3_user:BpkTnOLE2k4YMhYbAP8xZCUiyR39jqMp@dpg-d13jk18gjchc738uhvo0-a.oregon-postgres.render.com/traffic_db_3"
 
 # Email credentials
 SENDER_EMAIL = "iambalamurugan005@gmail.com"
